@@ -14,12 +14,14 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isNewsLoading, setIsNewsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
   const handleFileSelect = (file: File | null) => {
     setSelectedFile(file);
     setExtractedData(null);
     setNewsData(null);
     setError(null);
+    setNewsError(null);
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -59,6 +61,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsNewsLoading(true);
     setError(null);
+    setNewsError(null);
     setExtractedData(null);
     setNewsData(null);
 
@@ -75,18 +78,45 @@ const App: React.FC = () => {
       
       const data = await extractDataFromDocument(base64Data, mimeType);
       setExtractedData(data);
+      setIsLoading(false);
 
       if (data && data.anagrafica.entityName) {
          try {
             const news = await fetchWebNews(data.anagrafica.entityName);
             setNewsData(news);
-        } catch (newsError) {
-            console.error("Failed to fetch news:", newsError);
+        } catch (err) {
+            console.error("Failed to fetch news:", err);
+            let rawMessage = '';
+            if (err instanceof Error) {
+                rawMessage = err.message;
+            } else if (typeof err === 'object' && err !== null) {
+                try {
+                    const errorObj = err as any;
+                    if (errorObj.error && errorObj.error.message) {
+                        rawMessage = errorObj.error.message;
+                    } else {
+                        rawMessage = JSON.stringify(err);
+                    }
+                } catch {
+                    rawMessage = 'Could not parse news fetch error.';
+                }
+            } else {
+                rawMessage = 'An unknown error occurred while fetching news.';
+            }
+
+            if (rawMessage.includes('RESOURCE_EXHAUSTED') || rawMessage.includes('429')) {
+                setNewsError('Could not fetch news due to API rate limits. Please check your plan and billing details.');
+            } else {
+                setNewsError('Failed to fetch news and web information.');
+            }
+        } finally {
+            setIsNewsLoading(false);
         }
+      } else {
+        setIsNewsLoading(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
       setIsLoading(false);
       setIsNewsLoading(false);
     }
@@ -114,6 +144,7 @@ const App: React.FC = () => {
                     onUpdate={handleDataUpdate}
                     newsData={newsData}
                     isNewsLoading={isNewsLoading}
+                    newsError={newsError}
                 />
             </div>
         )}

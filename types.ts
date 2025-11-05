@@ -46,25 +46,31 @@ export interface PropertyDetails {
   dataStatus: string | null;
 }
 
-export interface LiabilityDetails {
+export interface GeneralLiabilityDetails {
   rctLimitEur: number | null;
-  rcpLimitEur: number | null;
   aggregateLimitEur: number | null;
   formRctRco: string | null;
-  formRcp: string | null;
   usaCanCovered: string | null;
-  recallSublimitEur: number | null;
-  pollutionAccSublimitEur: number | null;
-  interruptionThirdPartySublimitEur: number | null;
   dedRct: number | null;
-  dedRcp: number | null;
   extensions: string | null;
   exclusions: string | null;
   waivers: string | null;
   retroUltrattivita: string | null;
-  liabilityNotes: string | null;
+  generalLiabilityNotes: string | null;
   dataStatus: string | null;
 }
+
+export interface ProductLiabilityDetails {
+    rcpLimitEur: number | null;
+    formRcp: string | null;
+    recallSublimitEur: number | null;
+    pollutionAccSublimitEur: number | null;
+    interruptionThirdPartySublimitEur: number | null;
+    dedRcp: number | null;
+    productLiabilityNotes: string | null;
+    dataStatus: string | null;
+}
+
 
 export interface Sublimit {
   riskType: string | null;
@@ -117,7 +123,8 @@ export interface ExtractedData {
   riskSummary: RiskSummary;
   anagrafica: Anagrafica;
   propertyDetails: PropertyDetails;
-  liabilityDetails: LiabilityDetails;
+  generalLiabilityDetails: GeneralLiabilityDetails;
+  productLiabilityDetails: ProductLiabilityDetails;
   sublimits: Sublimit[];
   dettaglioEdifici: DettaglioEdifici[];
 }

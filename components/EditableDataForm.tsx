@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { ExtractedData, Anagrafica, PropertyDetails, LiabilityDetails, WebNewsData, Sublimit, DettaglioEdifici } from '../types';
+import { ExtractedData, Anagrafica, PropertyDetails, GeneralLiabilityDetails, ProductLiabilityDetails, WebNewsData, Sublimit, DettaglioEdifici } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { EmailModal } from './EmailModal';
+import { PdfExportModal, PdfExportConfig } from './PdfExportModal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -13,9 +14,16 @@ interface EditableDataFormProps {
   onUpdate: (updatedData: ExtractedData) => void;
   newsData: WebNewsData | null;
   isNewsLoading: boolean;
+  newsError: string | null;
 }
 
 // --- HELPER COMPONENTS ---
+
+const ExclamationTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+    </svg>
+);
 
 const Section: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -68,34 +76,46 @@ interface DataInputProps {
     suggestions?: string[];
     status?: string | null;
     tooltip?: string;
+    isMissing?: boolean;
 }
 
-const DataInput: React.FC<DataInputProps> = ({ label, value, onChange, type = 'text', suggestions = [], status = null, tooltip = '' }) => {
+const DataInput: React.FC<DataInputProps> = ({ label, value, onChange, type = 'text', suggestions = [], status = null, tooltip = '', isMissing = false }) => {
     if (suggestions.length > 0) {
-        return <AutocompleteInput label={label} value={value ?? ''} onChange={onChange} suggestions={suggestions} status={status} tooltip={tooltip} />;
+        return <AutocompleteInput label={label} value={value ?? ''} onChange={onChange} suggestions={suggestions} status={status} tooltip={tooltip} isMissing={isMissing} />;
     }
     
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">{label}</label>
+            <div className="flex items-center space-x-1 mb-1">
+                <label className="block text-sm font-medium text-gray-600">{label}</label>
+                {tooltip && (
+                    <div className="relative group/tooltip">
+                        <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 cursor-help" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs px-3 py-1.5 bg-gray-800 text-white text-xs rounded-md shadow-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-300 z-10">
+                            {tooltip}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-gray-800"></div>
+                        </div>
+                    </div>
+                )}
+            </div>
             <input
                 type={type}
                 value={value ?? ''}
                 onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? null : parseFloat(e.target.value)) : e.target.value)}
-                className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black"
+                className={`block w-full text-sm border rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black ${isMissing ? 'border-red-500' : 'border-gray-300'}`}
             />
         </div>
     );
 };
 
-const TextareaInput: React.FC<{ label: string; value: string | null; onChange: (val: string) => void; rows?: number; fullWidth?: boolean }> = ({ label, value, onChange, rows = 4, fullWidth = false }) => (
+const TextareaInput: React.FC<{ label: string; value: string | null; onChange: (val: string) => void; rows?: number; fullWidth?: boolean; isMissing?: boolean; }> = ({ label, value, onChange, rows = 4, fullWidth = false, isMissing = false }) => (
     <div className={fullWidth ? "md:col-span-2 lg:col-span-3" : ""}>
         <label className="block text-sm font-medium text-gray-600 mb-1">{label}</label>
         <textarea
             rows={rows}
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
-            className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black"
+            className={`block w-full text-sm border rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black ${isMissing ? 'border-red-500' : 'border-gray-300'}`}
         />
     </div>
 );
@@ -108,6 +128,7 @@ type FieldConfig<T> = {
     label: string;
     type?: 'text' | 'number' | 'date';
     suggestions?: string[];
+    tooltip?: string;
 };
 
 const anagraficaFields: FieldConfig<Anagrafica>[] = [
@@ -137,36 +158,39 @@ const anagraficaFields: FieldConfig<Anagrafica>[] = [
 ];
 
 const propertyDetailsFields: FieldConfig<PropertyDetails>[] = [
-    { key: 'tivPdTotalEur', label: 'TIV PD Total (EUR)', type: 'number' },
-    { key: 'tivBiSumInsEur', label: 'TIV BI Sum (EUR)', type: 'number' },
-    { key: 'ratePerMille', label: 'Rate per Mille', type: 'number' },
-    { key: 'catIncluded', label: 'CAT Included' },
-    { key: 'buildingsEur', label: 'Buildings (EUR)', type: 'number' },
-    { key: 'machineryEur', label: 'Machinery (EUR)', type: 'number' },
-    { key: 'stockEur', label: 'Stock (EUR)', type: 'number' },
-    { key: 'marginContributionEur', label: 'Margin Contribution (EUR)', type: 'number' },
-    { key: 'fireProtectionSummary', label: 'Fire Protection Summary' },
-    { key: 'natHazardNotes', label: 'Natural Hazard Notes' },
-    { key: 'biPeriodMonths', label: 'BI Period (Months)', type: 'number' },
-    { key: 'biNotes', label: 'BI Notes' },
+    { key: 'tivPdTotalEur', label: 'TIV PD Total (EUR)', type: 'number', tooltip: 'Total Insured Value for Property Damage is a key metric for assessing the maximum potential loss from a single event.' },
+    { key: 'tivBiSumInsEur', label: 'TIV BI Sum (EUR)', type: 'number', tooltip: 'Business Interruption value helps quantify the financial impact of a shutdown and is critical for coverage adequacy.' },
+    { key: 'ratePerMille', label: 'Rate per Mille', type: 'number', tooltip: 'The rate is used to calculate the premium based on the total insured value; it reflects the assessed risk level.' },
+    { key: 'catIncluded', label: 'CAT Included', tooltip: 'Clarifies if catastrophic events like earthquakes or floods are covered, which significantly impacts the risk profile.' },
+    { key: 'buildingsEur', label: 'Buildings (EUR)', type: 'number', tooltip: 'The value of buildings is a primary component of the total property exposure.' },
+    { key: 'machineryEur', label: 'Machinery (EUR)', type: 'number', tooltip: 'The value of machinery is essential for industries where equipment is critical to operations.' },
+    { key: 'stockEur', label: 'Stock (EUR)', type: 'number', tooltip: 'Stock value helps assess exposure related to inventory, which can be highly susceptible to damage.' },
+    { key: 'marginContributionEur', label: 'Margin Contribution (EUR)', type: 'number', tooltip: 'The contribution margin is a key input for calculating Business Interruption coverage needs.' },
+    { key: 'fireProtectionSummary', label: 'Fire Protection Summary', tooltip: 'Details on fire protection systems (sprinklers, alarms) are crucial for evaluating fire risk mitigation.' },
+    { key: 'natHazardNotes', label: 'Natural Hazard Notes', tooltip: 'Information on natural hazard exposure (e.g., flood zones, seismic activity) is vital for CAT risk assessment.' },
+    { key: 'biPeriodMonths', label: 'BI Period (Months)', type: 'number', tooltip: 'The Business Interruption indemnity period determines how long the policy will cover losses after an event.' },
+    { key: 'biNotes', label: 'BI Notes', tooltip: 'Specific notes on Business Interruption can highlight unique dependencies or vulnerabilities.' },
 ];
 
-const liabilityDetailsFields: FieldConfig<LiabilityDetails>[] = [
-    { key: 'rctLimitEur', label: 'RCT Limit (EUR)', type: 'number' },
-    { key: 'rcpLimitEur', label: 'RCP Limit (EUR)', type: 'number' },
-    { key: 'aggregateLimitEur', label: 'Aggregate Limit (EUR)', type: 'number' },
-    { key: 'formRctRco', label: 'Form RCT/RCO', suggestions: ['Loss Occurrence', 'Claims Made'] },
-    { key: 'formRcp', label: 'Form RCP', suggestions: ['Claims Made'] },
-    { key: 'usaCanCovered', label: 'USA/Canada Covered', suggestions: ['Yes', 'No'] },
-    { key: 'recallSublimitEur', label: 'Recall Sublimit (EUR)', type: 'number' },
-    { key: 'pollutionAccSublimitEur', label: 'Pollution Sublimit (EUR)', type: 'number' },
-    { key: 'interruptionThirdPartySublimitEur', label: '3rd Party Interruption (EUR)', type: 'number' },
-    { key: 'dedRct', label: 'Deductible RCT', type: 'number' },
-    { key: 'dedRcp', label: 'Deductible RCP', type: 'number' },
-    { key: 'extensions', label: 'Extensions' },
-    { key: 'exclusions', label: 'Exclusions' },
-    { key: 'waivers', label: 'Waivers' },
-    { key: 'retroUltrattivita', label: 'Retroactivity' },
+const generalLiabilityFields: FieldConfig<GeneralLiabilityDetails>[] = [
+    { key: 'rctLimitEur', label: 'RCT Limit (EUR)', type: 'number', tooltip: 'The General Liability Limit defines the maximum payout for third-party bodily injury or property damage claims.' },
+    { key: 'aggregateLimitEur', label: 'Aggregate Limit (EUR)', type: 'number', tooltip: 'The annual aggregate limit is the total amount the policy will pay for all claims within a policy period.' },
+    { key: 'formRctRco', label: 'Form RCT/RCO', suggestions: ['Loss Occurrence', 'Claims Made'], tooltip: "The policy form (e.g., Claims Made) determines when a claim must be reported to be covered." },
+    { key: 'usaCanCovered', label: 'USA/Canada Covered', suggestions: ['Yes', 'No'], tooltip: "Coverage for USA/Canada is a major factor as it represents a significantly different legal and risk environment." },
+    { key: 'dedRct', label: 'Deductible RCT', type: 'number', tooltip: "The deductible is the amount the insured must pay out-of-pocket before the policy responds to a General Liability claim." },
+    { key: 'extensions', label: 'Extensions', tooltip: "Understanding coverage extensions is key to defining the full scope of the policy." },
+    { key: 'exclusions', label: 'Exclusions', tooltip: "Identifying main exclusions is critical to understanding what is not covered by the policy." },
+    { key: 'waivers', label: 'Waivers', tooltip: "Waivers of recourse affect the insurer's ability to recover losses from third parties." },
+    { key: 'retroUltrattivita', label: 'Retroactivity', tooltip: "Retroactive date is crucial for 'Claims Made' policies, defining the starting point for covered events." },
+];
+
+const productLiabilityFields: FieldConfig<ProductLiabilityDetails>[] = [
+    { key: 'rcpLimitEur', label: 'RCP Limit (EUR)', type: 'number', tooltip: 'Product Liability Limit is essential for businesses that manufacture or sell products, covering claims of product-related harm.' },
+    { key: 'formRcp', label: 'Form RCP', suggestions: ['Claims Made'], tooltip: "The policy form for products is critical, especially for risks with a long tail." },
+    { key: 'recallSublimitEur', label: 'Recall Sublimit (EUR)', type: 'number', tooltip: 'Product recall coverage is important for mitigating the high costs associated with recalling a faulty product.' },
+    { key: 'pollutionAccSublimitEur', label: 'Pollution Sublimit (EUR)', type: 'number', tooltip: 'Pollution liability is a critical coverage, especially for industrial or manufacturing risks.' },
+    { key: 'interruptionThirdPartySublimitEur', label: '3rd Party Interruption (EUR)', type: 'number', tooltip: 'This covers losses when a key supplier or customer experiences an interruption, affecting the insured.' },
+    { key: 'dedRcp', label: 'Deductible RCP', type: 'number', tooltip: "The product liability deductible impacts the insured's retained risk for product-related claims." },
 ];
 
 const sublimitFields: FieldConfig<Sublimit>[] = [
@@ -194,8 +218,9 @@ const dettaglioEdificiFields: FieldConfig<DettaglioEdifici>[] = [
 
 // --- MAIN COMPONENT ---
 
-export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpdate, newsData, isNewsLoading }) => {
+export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpdate, newsData, isNewsLoading, newsError }) => {
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [emailSubject, setEmailSubject] = useState('');
     const [emailBody, setEmailBody] = useState('');
     const [expandedBuildingIndex, setExpandedBuildingIndex] = useState<number | null>(null);
@@ -241,7 +266,8 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         const sectionsToScan = [
             { key: 'anagrafica' as const, title: 'General Information', fields: anagraficaFields },
             { key: 'propertyDetails' as const, title: 'Property Details', fields: propertyDetailsFields },
-            { key: 'liabilityDetails' as const, title: 'Liability Details', fields: liabilityDetailsFields }
+            { key: 'generalLiabilityDetails' as const, title: 'General Liability Details', fields: generalLiabilityFields },
+            { key: 'productLiabilityDetails' as const, title: 'Product Liability Details', fields: productLiabilityFields }
         ];
 
         sectionsToScan.forEach(section => {
@@ -278,25 +304,34 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         setIsEmailModalOpen(true);
     };
     
+    const isValueMissing = (value: any) => {
+        return value === null || value === undefined || value === '' || value === 0;
+    };
+
     /**
      * Renders a grid of DataInput components based on a field configuration array.
      */
     const renderFields = <T extends object>(sectionName: keyof ExtractedData, fields: FieldConfig<T>[], sectionData: T) => {
-        return fields.map(field => (
-             <DataInput
-                key={field.key as string}
-                label={field.label}
-                value={sectionData[field.key]}
-                onChange={(v) => handleChange<T>(sectionName, field.key, v)}
-                type={field.type}
-                // FIX: Ensure `suggestions` is always an array to prevent type errors.
-                suggestions={field.suggestions || []}
-            />
-        ));
+        return fields.map(field => {
+            const value = sectionData[field.key];
+            const isMissing = isValueMissing(value);
+            return (
+                <DataInput
+                    key={field.key as string}
+                    label={field.label}
+                    value={value}
+                    onChange={(v) => handleChange<T>(sectionName, field.key, v)}
+                    type={field.type}
+                    suggestions={field.suggestions || []}
+                    isMissing={isMissing}
+                    tooltip={isMissing ? field.tooltip : ''}
+                />
+            );
+        });
     };
 
     const handleExportCsv = () => {
-        const { riskSummary, anagrafica, propertyDetails, liabilityDetails, sublimits, dettaglioEdifici } = data;
+        const { riskSummary, anagrafica, propertyDetails, generalLiabilityDetails, productLiabilityDetails, sublimits, dettaglioEdifici } = data;
 
         const escapeCsvCell = (cellData: any): string => {
             if (cellData === null || cellData === undefined) {
@@ -332,13 +367,22 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         rows.push(['Data Status', escapeCsvCell(propertyDetails.dataStatus)]);
         rows.push([]);
 
-        rows.push(['Liability Details']);
+        rows.push(['General Liability Details']);
         rows.push(['Field', 'Value']);
-        liabilityDetailsFields.forEach(field => {
-            rows.push([field.label, escapeCsvCell(liabilityDetails[field.key])]);
+        generalLiabilityFields.forEach(field => {
+            rows.push([field.label, escapeCsvCell(generalLiabilityDetails[field.key])]);
         });
-        rows.push(['Liability Notes', escapeCsvCell(liabilityDetails.liabilityNotes)]);
-        rows.push(['Data Status', escapeCsvCell(liabilityDetails.dataStatus)]);
+        rows.push(['General Liability Notes', escapeCsvCell(generalLiabilityDetails.generalLiabilityNotes)]);
+        rows.push(['Data Status', escapeCsvCell(generalLiabilityDetails.dataStatus)]);
+        rows.push([]);
+
+        rows.push(['Product Liability Details']);
+        rows.push(['Field', 'Value']);
+        productLiabilityFields.forEach(field => {
+            rows.push([field.label, escapeCsvCell(productLiabilityDetails[field.key])]);
+        });
+        rows.push(['Product Liability Notes', escapeCsvCell(productLiabilityDetails.productLiabilityNotes)]);
+        rows.push(['Data Status', escapeCsvCell(productLiabilityDetails.dataStatus)]);
         rows.push([]);
 
         if (sublimits && sublimits.length > 0) {
@@ -379,260 +423,266 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         URL.revokeObjectURL(url);
     };
     
-    const handleExportPdf = () => {
-        const doc = new jsPDF();
-        const { anagrafica, riskSummary, propertyDetails, liabilityDetails, sublimits, dettaglioEdifici } = data;
-        
-        // FIX: Robustly handle entityName to ensure it's a valid string for PDF generation.
-        const entityName = (typeof anagrafica.entityName === 'string' && anagrafica.entityName.trim()) 
-            ? anagrafica.entityName 
-            : "N/A";
+    const generatePdfReport = (config: PdfExportConfig) => {
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+        const { anagrafica, riskSummary, propertyDetails, generalLiabilityDetails, productLiabilityDetails, sublimits, dettaglioEdifici } = data;
     
-        const margin = 15;
-        let y = margin;
+        // --- 1. UTILITY FUNCTIONS ---
     
-        const addFooter = () => {
-            const pageCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                
-                const pageInfo = (doc.internal as any).pages[i];
-                if (!pageInfo) continue;
-
-                const pageWidth = pageInfo.width;
-                const pageHeight = pageInfo.height;
-
-                doc.setFontSize(8);
-                doc.setTextColor(150);
-                doc.text(
-                    `Page ${i} of ${pageCount}`,
-                    pageWidth - margin,
-                    pageHeight - 10,
-                    { align: 'right' }
-                );
-                doc.text(
-                    `Risk Report for ${entityName}`,
-                    margin,
-                    pageHeight - 10
-                );
+        const sanitize = (value: any): string => {
+            if (value === null || value === undefined) return "N/A";
+            if (typeof value === 'string' || typeof value === 'number') {
+                return String(value);
             }
+            return "N/A";
         };
+    
+        const FONT_SIZES = {
+            H1: 24, H2: 18, H3: 14, BODY: 11, SMALL: 9, FOOTER: 8,
+        };
+    
+        const COLORS = {
+            PRIMARY: '#D2192F', TEXT_DARK: '#2D3748', TEXT_LIGHT: '#4A5568', LINK: '#2B6CB0',
+        };
+    
+        const PAGE_MARGIN = 40;
+        let yPos = PAGE_MARGIN;
+        let sectionCounter = 1;
     
         const checkPageBreak = (spaceNeeded: number) => {
-            const currentPageHeight = doc.internal.pageSize.height;
-            if (y + spaceNeeded > currentPageHeight - margin) {
+            const pageSize = doc.internal.pageSize;
+            const effectivePageHeight = pageSize.height;
+            if (yPos + spaceNeeded > effectivePageHeight - PAGE_MARGIN) {
                 doc.addPage();
-                y = margin;
+                yPos = PAGE_MARGIN;
             }
         };
-        
-        // --- Title Page ---
-        doc.setFontSize(26);
+    
+        const addFooters = () => {
+            const pageCount = doc.internal.getNumberOfPages();
+            const entityName = sanitize(anagrafica?.entityName) !== 'N/A' ? sanitize(anagrafica.entityName) : 'Risk Report';
+    
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                const pageSize = doc.internal.pageSize;
+                const width = pageSize.width;
+                const height = pageSize.height;
+    
+                doc.setFontSize(FONT_SIZES.FOOTER);
+                doc.setTextColor(150);
+                doc.text(`Page ${i} of ${pageCount}`, width - PAGE_MARGIN, height - 20, { align: 'right' });
+                doc.text(entityName, PAGE_MARGIN, height - 20, { align: 'left' });
+            }
+        };
+    
+        // --- 2. COVER PAGE ---
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
         doc.setFont('helvetica', 'bold');
-        doc.text("Risk Assessment Report", doc.internal.pageSize.width / 2, 80, { align: 'center' });
-        
-        doc.setFontSize(16);
+        doc.setFontSize(FONT_SIZES.H1 + 4);
+        doc.setTextColor(COLORS.TEXT_DARK);
+        doc.text("Risk Assessment Report", pageWidth / 2, 150, { align: 'center' });
+    
         doc.setFont('helvetica', 'normal');
-        doc.text(`Prepared for: ${entityName}`, doc.internal.pageSize.width / 2, 100, { align: 'center' });
+        doc.setFontSize(FONT_SIZES.H2 - 2);
+        doc.setTextColor(COLORS.TEXT_LIGHT);
+        doc.text(`Prepared for: ${sanitize(anagrafica?.entityName)}`, pageWidth / 2, 200, { align: 'center' });
         
-        doc.setFontSize(12);
-        doc.setTextColor(100);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, doc.internal.pageSize.width / 2, 110, { align: 'center' });
+        let coverMetaY = 250;
+        if (config.useCustomCoverPage) {
+            doc.setFontSize(FONT_SIZES.BODY);
+            if (config.policyNumber) {
+                doc.text(`Policy Number: ${sanitize(config.policyNumber)}`, pageWidth / 2, coverMetaY, { align: 'center' });
+                coverMetaY += 20;
+            }
+            if (config.underwriterName) {
+                doc.text(`Underwriter: ${sanitize(config.underwriterName)}`, pageWidth / 2, coverMetaY, { align: 'center' });
+                coverMetaY += 20;
+            }
+        }
+    
+        doc.setFontSize(FONT_SIZES.BODY);
+        doc.setTextColor(150);
+        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 100, { align: 'center' });
+    
+        // --- 3. CONTENT SECTIONS ---
     
         doc.addPage();
-        y = margin;
+        yPos = PAGE_MARGIN;
     
-        // --- Risk Summary Section ---
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(40);
-        doc.text("1. Risk Summary", margin, y);
-        y += 10;
-        
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(80);
-        // FIX: Ensure summary is a valid string before passing to jsPDF to prevent errors from non-string truthy values (e.g., {}).
-        const summaryText = (typeof riskSummary.riskSummary === 'string' && riskSummary.riskSummary.trim())
-            ? riskSummary.riskSummary
-            : 'No summary available.';
-        const summaryLines = doc.splitTextToSize(summaryText, doc.internal.pageSize.width - margin * 2);
-        checkPageBreak(summaryLines.length * 5 + 10);
-        doc.text(summaryLines, margin, y);
-        y += summaryLines.length * 5 + 10;
-
-        // --- Latest News Section ---
-        if (newsData && (newsData.summary || (newsData.sources && newsData.sources.groundingChunks.length > 0))) {
-            checkPageBreak(20);
-            doc.setFontSize(18);
+        const renderSectionTitle = (title: string) => {
+            checkPageBreak(40);
             doc.setFont('helvetica', 'bold');
-            doc.setTextColor(40);
-            doc.text("2. Latest News", margin, y);
-            y += 10;
-        
-            if (newsData.summary && typeof newsData.summary === 'string' && newsData.summary.trim()) {
-                doc.setFontSize(12);
+            doc.setFontSize(FONT_SIZES.H2);
+            doc.setTextColor(COLORS.PRIMARY);
+            doc.text(`${sectionCounter}. ${title}`, PAGE_MARGIN, yPos);
+            yPos += FONT_SIZES.H2 + 10;
+            sectionCounter++;
+        };
+    
+        const renderParagraph = (text: string | null) => {
+            const sanitizedText = sanitize(text);
+            if (sanitizedText === 'N/A' || !sanitizedText.trim()) return;
+    
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(FONT_SIZES.BODY);
+            doc.setTextColor(COLORS.TEXT_DARK);
+            const lines = doc.splitTextToSize(sanitizedText, doc.internal.pageSize.getWidth() - (PAGE_MARGIN * 2));
+            checkPageBreak(lines.length * (FONT_SIZES.BODY * 1.15));
+            doc.text(lines, PAGE_MARGIN, yPos);
+            yPos += lines.length * (FONT_SIZES.BODY * 1.15) + 20;
+        };
+    
+        const renderKeyValueSection = <T extends object>(title: string, fields: FieldConfig<T>[], data: T, notes?: {label: string, value: string | null}) => {
+            renderSectionTitle(title);
+            const col1X = PAGE_MARGIN;
+            const col2X = PAGE_MARGIN + 180;
+            const valueWidth = doc.internal.pageSize.getWidth() - col2X - PAGE_MARGIN;
+    
+            fields.forEach(field => {
+                const value = sanitize(data[field.key as keyof T]);
+                const valueLines = doc.splitTextToSize(value, valueWidth);
+                const spaceNeeded = valueLines.length * (FONT_SIZES.BODY * 1.15) + 5;
+                checkPageBreak(spaceNeeded);
+    
                 doc.setFont('helvetica', 'bold');
-                doc.setTextColor(60);
-                doc.text("Web Summary", margin, y);
-                y += 7;
-        
-                doc.setFontSize(11);
+                doc.setFontSize(FONT_SIZES.BODY);
+                doc.setTextColor(COLORS.TEXT_DARK);
+                doc.text(`${field.label}:`, col1X, yPos);
+    
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(80);
-                const newsSummaryLines = doc.splitTextToSize(newsData.summary, doc.internal.pageSize.width - margin * 2);
-                checkPageBreak(newsSummaryLines.length * 5 + 10);
-                doc.text(newsSummaryLines, margin, y);
-                y += newsSummaryLines.length * 5 + 10;
-            }
-        
-            if (newsData.sources && newsData.sources.groundingChunks.length > 0) {
-                checkPageBreak(17);
-                doc.setFontSize(12);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(60);
-                doc.text("Recent Mentions", margin, y);
-                y += 7;
-        
-                newsData.sources.groundingChunks.forEach(chunk => {
-                    // FIX: Ensure title is a valid string to prevent errors from non-string truthy values.
-                    const rawTitle = chunk.web?.title;
-                    const title = (typeof rawTitle === 'string' && rawTitle.trim()) ? rawTitle : 'No title provided';
-                    const uri = chunk.web?.uri;
+                doc.setTextColor(COLORS.TEXT_LIGHT);
+                doc.text(valueLines, col2X, yPos);
+                yPos += spaceNeeded;
+            });
+            
+            if (notes) {
+                const value = sanitize(notes.value);
+                if (value !== 'N/A' && value.trim()) {
+                    const valueLines = doc.splitTextToSize(value, valueWidth);
+                    const spaceNeeded = valueLines.length * (FONT_SIZES.BODY * 1.15) + 5;
+                    checkPageBreak(spaceNeeded);
                     
-                    const titleLines = doc.splitTextToSize(title, doc.internal.pageSize.width - margin * 2);
-                    checkPageBreak(titleLines.length * 5 + (uri ? 8 : 2)); 
-
-                    doc.setFontSize(11);
                     doc.setFont('helvetica', 'bold');
-                    doc.setTextColor(40);
-                    doc.text(titleLines, margin, y);
-                    y += titleLines.length * 5;
-
-                    if (uri) {
-                        doc.setFontSize(9);
-                        doc.setFont('helvetica', 'italic');
-                        doc.setTextColor(0, 102, 204);
-                        doc.textWithLink(uri, margin, y, { url: uri });
-                        y += 7;
-                    } else {
-                        y += 2; // Smaller padding if no URI
+                    doc.setTextColor(COLORS.TEXT_DARK);
+                    doc.text(`${notes.label}:`, col1X, yPos);
+    
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(COLORS.TEXT_LIGHT);
+                    doc.text(valueLines, col2X, yPos);
+                    yPos += spaceNeeded;
+                }
+            }
+            yPos += 20;
+        };
+    
+        // --- SECTION RENDERING FLOW ---
+    
+        if (config.includeRiskSummary) {
+            renderSectionTitle("Risk Summary");
+            renderParagraph(riskSummary?.riskSummary);
+        }
+        
+        if (config.includeLatestNews && newsData) {
+            renderSectionTitle("Latest News");
+            
+            if (sanitize(newsData.summary) !== 'N/A' && sanitize(newsData.summary).trim()) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(FONT_SIZES.H3);
+                doc.setTextColor(COLORS.TEXT_DARK);
+                checkPageBreak(30);
+                doc.text("Web Summary", PAGE_MARGIN, yPos);
+                yPos += FONT_SIZES.H3 + 5;
+                renderParagraph(newsData.summary);
+            }
+            
+            const sources = newsData.sources?.groundingChunks;
+            if (sources && sources.length > 0) {
+                checkPageBreak(30);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(FONT_SIZES.H3);
+                doc.setTextColor(COLORS.TEXT_DARK);
+                doc.text("Recent Mentions", PAGE_MARGIN, yPos);
+                yPos += FONT_SIZES.H3 + 10;
+                
+                sources.filter(chunk => chunk?.web).forEach(chunk => {
+                    const title = sanitize(chunk.web.title);
+                    const uri = sanitize(chunk.web.uri);
+    
+                    checkPageBreak(40);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(FONT_SIZES.BODY);
+                    doc.setTextColor(COLORS.TEXT_DARK);
+                    const titleLines = doc.splitTextToSize(title, doc.internal.pageSize.getWidth() - (PAGE_MARGIN * 2));
+                    doc.text(titleLines, PAGE_MARGIN, yPos);
+                    yPos += titleLines.length * (FONT_SIZES.BODY * 1.15) + 2;
+                    
+                    if (uri !== 'N/A' && uri.trim()) {
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(FONT_SIZES.SMALL);
+                        doc.setTextColor(COLORS.LINK);
+                        doc.textWithLink(uri, PAGE_MARGIN, yPos, { url: uri });
+                        yPos += FONT_SIZES.SMALL + 10;
                     }
                 });
             }
-            y += 5; // Extra padding after section
+            yPos += 10;
         }
-    
-        // --- Helper for Key-Value Sections ---
-        const addKeyValueSection = <T extends object>(title: string, fields: FieldConfig<T>[], sectionData: T, notes?: {label: string, value: string | null}) => {
-            checkPageBreak(20);
-            doc.setFontSize(18);
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(40);
-            doc.text(title, margin, y);
-            y += 10;
-    
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(80);
-    
-            const col1X = margin;
-            const col2X = margin + 70;
-    
-            fields.forEach(field => {
-                const value = sectionData[field.key as keyof T];
-                const displayValue = (value === null || value === undefined) ? 'N/A' : String(value);
-                const valueLines = doc.splitTextToSize(displayValue, doc.internal.pageSize.width - col2X - margin);
-    
-                const spaceNeeded = valueLines.length * 5;
-                checkPageBreak(spaceNeeded);
-                
-                doc.setFont('helvetica', 'bold');
-                doc.text(`${field.label}:`, col1X, y);
-                
-                doc.setFont('helvetica', 'normal');
-                doc.text(valueLines, col2X, y);
-    
-                y += spaceNeeded + 2; // Add a little padding
-            });
-    
-            // FIX: Ensure notes value is a valid string before processing.
-            if (notes && typeof notes.value === 'string' && notes.value.trim()) {
-                const notesLines = doc.splitTextToSize(notes.value, doc.internal.pageSize.width - col2X - margin);
-                const spaceNeeded = notesLines.length * 5;
-                checkPageBreak(spaceNeeded);
-                
-                doc.setFont('helvetica', 'bold');
-                doc.text(`${notes.label}:`, col1X, y);
-                
-                doc.setFont('helvetica', 'normal');
-                doc.text(notesLines, col2X, y);
-    
-                y += spaceNeeded + 2;
-            }
-    
-            y += 10; // Extra padding after section
-        };
         
-        // --- Add Sections using the helper ---
-        addKeyValueSection('3. General Information', anagraficaFields, anagrafica);
-        addKeyValueSection('4. Property Details', propertyDetailsFields, propertyDetails, {label: 'Property Notes', value: propertyDetails.propertyNotes});
-        addKeyValueSection('5. Liability Details', liabilityDetailsFields, liabilityDetails, {label: 'Liability Notes', value: liabilityDetails.liabilityNotes});
-    
-        // --- Tables ---
-        const tableTheme = 'grid';
-        const tableHeadStyles = { fillColor: [210, 25, 47] }; // Red color from theme
-
-        if (sublimits && sublimits.length > 0) {
-            checkPageBreak(30);
-            doc.setFontSize(18);
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(40);
-            doc.text("6. Sublimits", margin, y);
-            y += 10;
-            
+        if (config.includeAnagrafica && anagrafica) {
+            renderKeyValueSection("General Information", anagraficaFields, anagrafica);
+        }
+        if (config.includePropertyDetails && propertyDetails) {
+            renderKeyValueSection("Property Details", propertyDetailsFields, propertyDetails, {label: "Property Notes", value: propertyDetails.propertyNotes});
+        }
+        if (config.includeGeneralLiabilityDetails && generalLiabilityDetails) {
+            renderKeyValueSection("General Liability Details", generalLiabilityFields, generalLiabilityDetails, {label: "General Liability Notes", value: generalLiabilityDetails.generalLiabilityNotes});
+        }
+        if (config.includeProductLiabilityDetails && productLiabilityDetails) {
+            renderKeyValueSection("Product Liability Details", productLiabilityFields, productLiabilityDetails, {label: "Product Liability Notes", value: productLiabilityDetails.productLiabilityNotes});
+        }
+        
+        const tableHeadStyles = { fillColor: COLORS.PRIMARY, textColor: '#FFFFFF', fontStyle: 'bold' };
+        
+        if (config.includeSublimits && sublimits?.length > 0) {
+            renderSectionTitle("Sublimits");
             autoTable(doc, {
-                startY: y,
+                startY: yPos,
                 head: [sublimitFields.map(f => f.label)],
-                body: sublimits.map(row => sublimitFields.map(f => (row[f.key] === null || row[f.key] === undefined) ? 'N/A' : String(row[f.key]))),
-                theme: tableTheme,
+                body: sublimits.map(row => sublimitFields.map(f => sanitize(row[f.key]))),
+                theme: 'grid',
                 headStyles: tableHeadStyles,
+                didDrawPage: (d) => { yPos = d.cursor?.y ? d.cursor.y + 15 : PAGE_MARGIN; }
             });
-            y = (doc as any).lastAutoTable.finalY + 15;
+            yPos = (doc as any).lastAutoTable.finalY + 20;
         }
         
-        if (dettaglioEdifici && dettaglioEdifici.length > 0) {
+        if (config.includeBuildingDetails && dettaglioEdifici?.length > 0) {
             doc.addPage(undefined, 'landscape');
-            y = margin;
-
-            doc.setFontSize(18);
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(40);
-            doc.text("7. Building Details", margin, y);
-            y += 10;
-    
+            yPos = PAGE_MARGIN;
+            renderSectionTitle("Building Details");
+            
             const buildingHeaders = dettaglioEdificiFields.map(f => f.label).concat(['Building Notes']);
-            const buildingBody = dettaglioEdifici.map(building => {
-                const row = dettaglioEdificiFields.map(field => (building[field.key] === null || building[field.key] === undefined) ? 'N/A' : String(building[field.key]));
-                const notesValue = building.buildingNotes;
-                // FIX: Robustly handle non-string values for notes to prevent PDF generation errors.
-                const notesDisplay = (typeof notesValue === 'string' && notesValue.trim()) ? notesValue : 'N/A';
-                row.push(notesDisplay);
+            const buildingBody = dettaglioEdifici.map(b => {
+                const row = dettaglioEdificiFields.map(f => sanitize(b[f.key]));
+                row.push(sanitize(b.buildingNotes));
                 return row;
             });
             
             autoTable(doc, {
-                startY: y,
+                startY: yPos,
                 head: [buildingHeaders],
                 body: buildingBody,
-                theme: tableTheme,
+                theme: 'grid',
                 headStyles: tableHeadStyles,
             });
         }
     
-        // --- Finalize ---
-        addFooter();
-        doc.save(`${entityName.replace(/\s+/g, '_')}_Risk_Report.pdf`);
+        // --- 4. FINALIZE ---
+        addFooters();
+        const filename = `${sanitize(anagrafica?.entityName).replace(/\s+/g, '_')}_Risk_Report.pdf`;
+        doc.save(filename);
     };
 
     return (
@@ -659,7 +709,7 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                         Export CSV
                     </button>
                      <button
-                        onClick={handleExportPdf}
+                        onClick={() => setIsPdfModalOpen(true)}
                         className="flex items-center bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-red-700 transition-colors"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
@@ -686,6 +736,14 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                         </svg>
                         <span>Searching for latest news about {data.anagrafica.entityName}...</span>
                     </div>
+                ) : newsError ? (
+                    <div className="flex items-start text-red-700 bg-red-50 p-4 rounded-lg border border-red-200" role="alert">
+                        <ExclamationTriangleIcon className="h-5 w-5 mr-3 flex-shrink-0" />
+                        <div className="text-sm">
+                            <p className="font-bold">Failed to load news</p>
+                            <p>{newsError}</p>
+                        </div>
+                    </div>
                 ) : newsData && (newsData.summary || (newsData.sources && newsData.sources.groundingChunks.length > 0)) ? (
                     <div className="space-y-4">
                         {newsData.summary && (
@@ -703,11 +761,10 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                                         <svg className="h-5 w-5 text-red-500 mr-3 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                                         </svg>
-                                        <div>
-                                          <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-600 hover:text-red-800 hover:underline">
-                                            {chunk.web.title}
+                                        <div className="truncate">
+                                          <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-600 hover:text-red-800 hover:underline truncate">
+                                            {chunk.web.uri}
                                           </a>
-                                           <p className="text-xs text-gray-500 truncate">{chunk.web.uri}</p>
                                         </div>
                                       </li>
                                     ))}
@@ -728,7 +785,8 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                         value={data.anagrafica.dataStatus} 
                         onChange={(v) => handleChange<Anagrafica>('anagrafica', 'dataStatus', v)} 
                         suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.anagrafica.dataStatus} 
+                        status={data.anagrafica.dataStatus}
+                        isMissing={isValueMissing(data.anagrafica.dataStatus)}
                     />
                 </Grid>
             </Section>
@@ -741,6 +799,7 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                         value={data.propertyDetails.propertyNotes}
                         onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'propertyNotes', v)}
                         fullWidth={true}
+                        isMissing={isValueMissing(data.propertyDetails.propertyNotes)}
                     />
                     <DataInput 
                         label="Data Status" 
@@ -748,25 +807,49 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                         onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'dataStatus', v)} 
                         suggestions={['ok', 'partial', 'ambiguous']} 
                         status={data.propertyDetails.dataStatus} 
+                        isMissing={isValueMissing(data.propertyDetails.dataStatus)}
                     />
                 </Grid>
             </Section>
 
-             <Section title="Liability Details" defaultOpen={false}>
+             <Section title="General Liability Details" defaultOpen={false}>
                 <Grid>
-                    {renderFields('liabilityDetails', liabilityDetailsFields, data.liabilityDetails)}
+                    {renderFields('generalLiabilityDetails', generalLiabilityFields, data.generalLiabilityDetails)}
                     <TextareaInput
-                        label="Liability Notes"
-                        value={data.liabilityDetails.liabilityNotes}
-                        onChange={(v) => handleChange<LiabilityDetails>('liabilityDetails', 'liabilityNotes', v)}
+                        label="General Liability Notes"
+                        value={data.generalLiabilityDetails.generalLiabilityNotes}
+                        onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'generalLiabilityNotes', v)}
                         fullWidth={true}
+                        isMissing={isValueMissing(data.generalLiabilityDetails.generalLiabilityNotes)}
                     />
                     <DataInput 
                         label="Data Status" 
-                        value={data.liabilityDetails.dataStatus} 
-                        onChange={(v) => handleChange<LiabilityDetails>('liabilityDetails', 'dataStatus', v)} 
+                        value={data.generalLiabilityDetails.dataStatus} 
+                        onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'dataStatus', v)} 
                         suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.liabilityDetails.dataStatus} 
+                        status={data.generalLiabilityDetails.dataStatus} 
+                        isMissing={isValueMissing(data.generalLiabilityDetails.dataStatus)}
+                    />
+                </Grid>
+            </Section>
+
+            <Section title="Product Liability Details" defaultOpen={false}>
+                <Grid>
+                    {renderFields('productLiabilityDetails', productLiabilityFields, data.productLiabilityDetails)}
+                    <TextareaInput
+                        label="Product Liability Notes"
+                        value={data.productLiabilityDetails.productLiabilityNotes}
+                        onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'productLiabilityNotes', v)}
+                        fullWidth={true}
+                        isMissing={isValueMissing(data.productLiabilityDetails.productLiabilityNotes)}
+                    />
+                    <DataInput 
+                        label="Data Status" 
+                        value={data.productLiabilityDetails.dataStatus} 
+                        onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'dataStatus', v)} 
+                        suggestions={['ok', 'partial', 'ambiguous']} 
+                        status={data.productLiabilityDetails.dataStatus} 
+                        isMissing={isValueMissing(data.productLiabilityDetails.dataStatus)}
                     />
                 </Grid>
             </Section>
@@ -858,6 +941,12 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                     </div>
                 </Section>
             )}
+
+            <PdfExportModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                onGenerate={generatePdfReport}
+            />
 
             <EmailModal
                 isOpen={isEmailModalOpen}

@@ -67,25 +67,32 @@ const responseSchema = {
         dataStatus: { type: Type.STRING, description: "Data quality status." },
       },
     },
-    liabilityDetails: {
+    generalLiabilityDetails: {
       type: Type.OBJECT,
       properties: {
         rctLimitEur: { type: Type.NUMBER, description: "General Liability Limit." },
-        rcpLimitEur: { type: Type.NUMBER, description: "Product Liability Limit." },
         aggregateLimitEur: { type: Type.NUMBER, description: "Annual aggregate limit." },
         formRctRco: { type: Type.STRING, description: "Form (Loss Occurrence/Claims Made) for GL." },
-        formRcp: { type: Type.STRING, description: "Form (Claims Made) for PL." },
         usaCanCovered: { type: Type.STRING, description: "USA/Canada Coverage (Yes/No)." },
-        recallSublimitEur: { type: Type.NUMBER, description: "Product Recall Sublimit." },
-        pollutionAccSublimitEur: { type: Type.NUMBER, description: "Accidental Pollution Sublimit." },
-        interruptionThirdPartySublimitEur: { type: Type.NUMBER, description: "Third-party interruption sublimit." },
         dedRct: { type: Type.NUMBER, description: "GL Deductible." },
-        dedRcp: { type: Type.NUMBER, description: "PL Deductible." },
         extensions: { type: Type.STRING, description: "Coverage extensions." },
         exclusions: { type: Type.STRING, description: "Main exclusions." },
         waivers: { type: Type.STRING, description: "Waivers of recourse." },
         retroUltrattivita: { type: Type.STRING, description: "Retroactivity / Extended Reporting." },
-        liabilityNotes: { type: Type.STRING, description: "A summary of any other relevant liability details not captured in other fields." },
+        generalLiabilityNotes: { type: Type.STRING, description: "A summary of any other relevant general liability details not captured in other fields." },
+        dataStatus: { type: Type.STRING, description: "Data quality status." },
+      },
+    },
+    productLiabilityDetails: {
+      type: Type.OBJECT,
+      properties: {
+        rcpLimitEur: { type: Type.NUMBER, description: "Product Liability Limit." },
+        formRcp: { type: Type.STRING, description: "Form (Claims Made) for PL." },
+        recallSublimitEur: { type: Type.NUMBER, description: "Product Recall Sublimit." },
+        pollutionAccSublimitEur: { type: Type.NUMBER, description: "Accidental Pollution Sublimit." },
+        interruptionThirdPartySublimitEur: { type: Type.NUMBER, description: "Third-party interruption sublimit." },
+        dedRcp: { type: Type.NUMBER, description: "PL Deductible." },
+        productLiabilityNotes: { type: Type.STRING, description: "A summary of any other relevant product liability details not captured in other fields." },
         dataStatus: { type: Type.STRING, description: "Data quality status." },
       },
     },
@@ -137,14 +144,16 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
 
   const textPart = {
     text: `You are an expert AI assistant for an insurance underwriting workbench. 
-    Your task is to meticulously extract all relevant information from the provided document.
+    Your task is to meticulously extract all relevant information from the provided document and structure it into a single, complete JSON object based on the provided schema.
     The document could be a PDF, a Word document, or an email related to an insurance policy.
     
     IMPORTANT: You must differentiate between the insurer (the company providing the insurance, e.g., Generali) and the insured (the client seeking coverage). The 'anagrafica' (General Information) section MUST exclusively contain information about the insured client. Do NOT populate it with details about the insurer.
 
-    First, provide a concise 'riskSummary' of the document, highlighting the main insured party, the primary risks being covered, and any significant limits or conditions.
-    Then, populate the rest of the JSON object.
-    For the \`propertyDetails\`, \`liabilityDetails\`, and \`dettaglioEdifici\` sections, use the \`propertyNotes\`, \`liabilityNotes\`, and \`buildingNotes\` fields respectively to summarize any important information that does not fit into the other predefined structured fields.
+    - The 'riskSummary' should be a concise overview of the document, highlighting the main insured party, primary risks, and significant limits.
+    - All other sections ('anagrafica', 'propertyDetails', etc.) must be populated with the corresponding extracted data.
+    
+    The liability information is split into two sections: 'generalLiabilityDetails' and 'productLiabilityDetails'. Extract information into the appropriate section. If the document only covers one type of liability (e.g., only General Liability), populate that section and leave the fields in the other section as 'null'.
+    For the \`propertyDetails\`, \`generalLiabilityDetails\`, \`productLiabilityDetails\`, and \`dettaglioEdifici\` sections, use the respective "Notes" fields (e.g., \`propertyNotes\`, \`generalLiabilityNotes\`) to summarize any important information that does not fit into the other predefined structured fields.
     If a specific piece of information is not found in the document, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
     For fields that are arrays (like 'dettaglioEdifici' or 'sublimits'), return an empty array [] if no items are found.
     Return only the JSON object.`
@@ -170,7 +179,8 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
       parsed.riskSummary = parsed.riskSummary || { riskSummary: null };
       parsed.anagrafica = parsed.anagrafica || {};
       parsed.propertyDetails = parsed.propertyDetails || {};
-      parsed.liabilityDetails = parsed.liabilityDetails || {};
+      parsed.generalLiabilityDetails = parsed.generalLiabilityDetails || {};
+      parsed.productLiabilityDetails = parsed.productLiabilityDetails || {};
       parsed.dettaglioEdifici = Array.isArray(parsed.dettaglioEdifici) ? parsed.dettaglioEdifici : [];
       parsed.sublimits = Array.isArray(parsed.sublimits) ? parsed.sublimits : [];
 
@@ -211,6 +221,6 @@ export const fetchWebNews = async (entityName: string): Promise<WebNewsData | nu
     return { summary, sources };
   } catch (error) {
     console.error(`Failed to fetch news for ${entityName}:`, error);
-    return null;
+    throw error;
   }
 };

@@ -32,9 +32,10 @@ interface AutocompleteInputProps {
   suggestions: string[];
   status?: string | null;
   tooltip?: string;
+  isMissing?: boolean;
 }
 
-export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({ label, value, onChange, suggestions, status, tooltip }) => {
+export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({ label, value, onChange, suggestions, status, tooltip, isMissing = false }) => {
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
@@ -132,7 +133,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({ label, val
             <label className="block text-sm font-medium text-gray-600">{label}</label>
             {tooltip && (
                 <div className="relative group/tooltip">
-                    <QuestionMarkCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
+                    <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 cursor-help" />
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs px-3 py-1.5 bg-gray-800 text-white text-xs rounded-md shadow-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-300 z-10">
                         {tooltip}
                         <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-gray-800"></div>
@@ -146,7 +147,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({ label, val
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
-                className="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black pr-8"
+                className={`block w-full text-sm border rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 bg-white text-black pr-8 ${isMissing ? 'border-red-500' : 'border-gray-300'}`}
                 autoComplete="off"
             />
             <StatusIndicator />
