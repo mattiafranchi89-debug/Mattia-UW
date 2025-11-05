@@ -42,6 +42,7 @@ export interface PropertyDetails {
   natHazardNotes: string | null;
   biPeriodMonths: number | null;
   biNotes: string | null;
+  propertyNotes: string | null;
   dataStatus: string | null;
 }
 
@@ -61,6 +62,7 @@ export interface LiabilityDetails {
   exclusions: string | null;
   waivers: string | null;
   retroUltrattivita: string | null;
+  liabilityNotes: string | null;
   dataStatus: string | null;
 }
 
@@ -86,6 +88,7 @@ export interface DettaglioEdifici {
   automaticFireAlarmPercent: number | null;
   sprinklersPercent: number | null;
   roofMaterial: string | null;
+  buildingNotes: string | null;
 }
 
 export interface RiskSummary {

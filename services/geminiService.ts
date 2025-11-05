@@ -63,6 +63,7 @@ const responseSchema = {
         natHazardNotes: { type: Type.STRING, description: "Natural hazard notes." },
         biPeriodMonths: { type: Type.INTEGER, description: "BI indemnity period in months." },
         biNotes: { type: Type.STRING, description: "BI details." },
+        propertyNotes: { type: Type.STRING, description: "A summary of any other relevant property details not captured in other fields." },
         dataStatus: { type: Type.STRING, description: "Data quality status." },
       },
     },
@@ -84,6 +85,7 @@ const responseSchema = {
         exclusions: { type: Type.STRING, description: "Main exclusions." },
         waivers: { type: Type.STRING, description: "Waivers of recourse." },
         retroUltrattivita: { type: Type.STRING, description: "Retroactivity / Extended Reporting." },
+        liabilityNotes: { type: Type.STRING, description: "A summary of any other relevant liability details not captured in other fields." },
         dataStatus: { type: Type.STRING, description: "Data quality status." },
       },
     },
@@ -118,6 +120,7 @@ const responseSchema = {
             automaticFireAlarmPercent: { type: Type.NUMBER, description: "% presence of automatic fire alarm." },
             sprinklersPercent: { type: Type.NUMBER, description: "% presence of sprinklers." },
             roofMaterial: { type: Type.STRING, description: "Roof Material." },
+            buildingNotes: { type: Type.STRING, description: "A summary of any other relevant building details not captured in other fields." },
         },
       }
     },
@@ -141,6 +144,7 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
 
     First, provide a concise 'riskSummary' of the document, highlighting the main insured party, the primary risks being covered, and any significant limits or conditions.
     Then, populate the rest of the JSON object.
+    For the \`propertyDetails\`, \`liabilityDetails\`, and \`dettaglioEdifici\` sections, use the \`propertyNotes\`, \`liabilityNotes\`, and \`buildingNotes\` fields respectively to summarize any important information that does not fit into the other predefined structured fields.
     If a specific piece of information is not found in the document, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
     For fields that are arrays (like 'dettaglioEdifici' or 'sublimits'), return an empty array [] if no items are found.
     Return only the JSON object.`
@@ -161,7 +165,12 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
   try {
       const parsed = JSON.parse(responseText);
       
-      // FIX: Ensure array fields are always arrays to prevent crashes from malformed AI responses.
+      // FIX: Ensure all top-level objects and arrays exist to prevent runtime errors.
+      // This prevents crashes if the model fails to return a complete structure.
+      parsed.riskSummary = parsed.riskSummary || { riskSummary: null };
+      parsed.anagrafica = parsed.anagrafica || {};
+      parsed.propertyDetails = parsed.propertyDetails || {};
+      parsed.liabilityDetails = parsed.liabilityDetails || {};
       parsed.dettaglioEdifici = Array.isArray(parsed.dettaglioEdifici) ? parsed.dettaglioEdifici : [];
       parsed.sublimits = Array.isArray(parsed.sublimits) ? parsed.sublimits : [];
 
@@ -185,9 +194,17 @@ export const fetchWebNews = async (entityName: string): Promise<WebNewsData | nu
     });
 
     const summary = response.text ?? null;
-    const sources = response.candidates?.[0]?.groundingMetadata ?? null;
+    const sources: GroundingMetadata | null = response.candidates?.[0]?.groundingMetadata ?? null;
 
-    if (!summary && (!sources || !sources.groundingChunks || sources.groundingChunks.length === 0)) {
+    // FIX: Defensively handle cases where `sources` exists but `groundingChunks` is not an array.
+    if (sources && !Array.isArray(sources.groundingChunks)) {
+      sources.groundingChunks = [];
+    }
+    
+    const hasNoSources = !sources || sources.groundingChunks.length === 0;
+
+    // If there's no summary and no sources, return null.
+    if (!summary && hasNoSources) {
         return null;
     }
 

@@ -34,6 +34,25 @@ const App: React.FC = () => {
     });
   };
 
+  const getMimeType = (file: File): string => {
+    if (file.type) {
+        return file.type;
+    }
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    switch (extension) {
+        case 'pdf':
+            return 'application/pdf';
+        case 'docx':
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        case 'eml':
+            return 'message/rfc822';
+        case 'msg':
+            return 'application/vnd.ms-outlook';
+        default:
+            return '';
+    }
+  }
+
   const handleSubmit = async () => {
     if (!selectedFile) return;
 
@@ -45,7 +64,15 @@ const App: React.FC = () => {
 
     try {
       const base64Data = await fileToBase64(selectedFile);
-      const mimeType = selectedFile.type;
+      const mimeType = getMimeType(selectedFile);
+
+      if (!mimeType) {
+          setError(`Unsupported file type. Could not determine MIME type for "${selectedFile.name}".`);
+          setIsLoading(false);
+          setIsNewsLoading(false);
+          return;
+      }
+      
       const data = await extractDataFromDocument(base64Data, mimeType);
       setExtractedData(data);
 
