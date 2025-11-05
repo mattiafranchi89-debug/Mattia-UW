@@ -1,0 +1,5 @@
+{
+  "name": "Insurance Underwriting Workbench",
+  "description": "An application for an insurance company's underwriting workbench that extracts key information from uploaded documents (Word, PDF, emails) using AI.",
+  "requestFramePermissions": []
+}
