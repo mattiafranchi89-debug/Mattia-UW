@@ -5,6 +5,7 @@ import { FileUpload } from './components/FileUpload';
 import { Loader } from './components/Loader';
 import { ErrorMessage } from './components/ErrorMessage';
 import { EditableDataForm } from './components/EditableDataForm';
+import { Chatbot } from './components/Chatbot';
 import { fetchWebNews, extractDataFromDocument } from './services/geminiService';
 import { ExtractedData, WebNewsData } from './types';
 
@@ -169,6 +170,7 @@ const App: React.FC = () => {
           </>
         )}
       </main>
+      {extractedData && <Chatbot data={extractedData} />}
     </div>
   );
 };

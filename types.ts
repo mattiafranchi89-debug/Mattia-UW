@@ -128,3 +128,8 @@ export interface ExtractedData {
   sublimits: Sublimit[];
   dettaglioEdifici: DettaglioEdifici[];
 }
+
+export interface ChatMessage {
+  sender: 'user' | 'model';
+  text: string;
+}
