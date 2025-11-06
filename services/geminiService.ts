@@ -1,12 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData, WebNewsData, GroundingMetadata } from '../types';
 
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set");
-}
+/**
+ * Creates and returns a GoogleGenAI client instance.
+ * Throws an error if the API key is not available in the environment variables,
+ * ensuring that the app can handle the error gracefully instead of crashing.
+ */
+const getAiClient = (): GoogleGenAI => {
+  const API_KEY = process.env.API_KEY;
+  if (!API_KEY) {
+    throw new Error("API_KEY is not configured. Please ensure it is set up in your environment variables.");
+  }
+  return new GoogleGenAI({ apiKey: API_KEY });
+};
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -135,6 +142,8 @@ const responseSchema = {
 };
 
 export const extractDataFromDocument = async (base64Data: string, mimeType: string): Promise<ExtractedData> => {
+  const ai = getAiClient();
+  
   const filePart = {
     inlineData: {
       data: base64Data,
@@ -195,6 +204,7 @@ export const fetchWebNews = async (entityName: string): Promise<WebNewsData | nu
   if (!entityName) return null;
 
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Summarize the latest news and relevant web information about "${entityName}".`,
