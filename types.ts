@@ -102,8 +102,8 @@ export interface RiskSummary {
 }
 
 export interface WebGrounding {
-  uri: string;
-  title: string;
+  uri?: string;
+  title?: string;
 }
 
 export interface GroundingChunk {

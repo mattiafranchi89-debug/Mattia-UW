@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { Loader } from './components/Loader';
@@ -15,6 +16,16 @@ const App: React.FC = () => {
   const [isNewsLoading, setIsNewsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [isApiKeyConfigured, setIsApiKeyConfigured] = useState<boolean>(true);
+
+  useEffect(() => {
+    // Proactively check for the API key on component mount.
+    // This provides immediate feedback to the user if the environment is not configured.
+    if (!process.env.API_KEY) {
+      setIsApiKeyConfigured(false);
+    }
+  }, []);
+
 
   const handleFileSelect = (file: File | null) => {
     setSelectedFile(file);
@@ -130,23 +141,32 @@ const App: React.FC = () => {
     <div className="bg-gray-50 min-h-screen">
       <Header />
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-        <FileUpload
-          onFileSelect={handleFileSelect}
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-        />
-        {isLoading && <Loader />}
-        {error && <ErrorMessage message={error} />}
-        {extractedData && (
-            <div className="mt-8">
-                <EditableDataForm
-                    data={extractedData}
-                    onUpdate={handleDataUpdate}
-                    newsData={newsData}
-                    isNewsLoading={isNewsLoading}
-                    newsError={newsError}
-                />
-            </div>
+        {!isApiKeyConfigured ? (
+          <ErrorMessage
+            title="Configuration Required"
+            message="The Gemini API key is not configured. Please set up the API_KEY in your environment to use this application."
+          />
+        ) : (
+          <>
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              onSubmit={handleSubmit}
+              isLoading={isLoading}
+            />
+            {isLoading && <Loader />}
+            {error && <ErrorMessage title="Processing Error" message={error} />}
+            {extractedData && (
+                <div className="mt-8">
+                    <EditableDataForm
+                        data={extractedData}
+                        onUpdate={handleDataUpdate}
+                        newsData={newsData}
+                        isNewsLoading={isNewsLoading}
+                        newsError={newsError}
+                    />
+                </div>
+            )}
+          </>
         )}
       </main>
     </div>

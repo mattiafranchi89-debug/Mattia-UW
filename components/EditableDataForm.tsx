@@ -756,14 +756,15 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                              <div>
                                 <h3 className="text-md font-semibold text-gray-700 mb-2 mt-4">Recent Mentions</h3>
                                 <ul className="space-y-3">
-                                    {newsData.sources.groundingChunks.map((chunk, index) => (
+                                    {/* FIX: Handle potentially missing uri or title in grounding chunks. */}
+                                    {newsData.sources.groundingChunks.filter(chunk => chunk.web?.uri).map((chunk, index) => (
                                       <li key={index} className="flex items-start">
                                         <svg className="h-5 w-5 text-red-500 mr-3 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                                         </svg>
                                         <div className="truncate">
-                                          <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-600 hover:text-red-800 hover:underline truncate">
-                                            {chunk.web.uri}
+                                          <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-600 hover:text-red-800 hover:underline truncate" title={chunk.web.uri}>
+                                            {chunk.web.title || chunk.web.uri}
                                           </a>
                                         </div>
                                       </li>
