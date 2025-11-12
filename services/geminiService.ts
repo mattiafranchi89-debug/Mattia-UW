@@ -172,7 +172,7 @@ export const extractDataFromDocument = async (files: { base64Data: string; mimeT
   
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: { parts: [...fileParts, textPart] },
+    contents: { parts: [textPart, ...fileParts] },
     config: {
       responseMimeType: "application/json",
       responseSchema: responseSchema,

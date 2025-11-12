@@ -10,8 +10,12 @@ import { fetchWebNews, extractDataFromDocument } from './services/geminiService'
 import { ExtractedData, WebNewsData } from './types';
 
 // Declare global variables for email parsing libraries loaded from CDN
-declare const emlformat: any;
-declare const MsgReader: any;
+declare global {
+  interface Window {
+    emlformat: any;
+    MsgReader: any;
+  }
+}
 
 
 const App: React.FC = () => {
@@ -106,7 +110,7 @@ const App: React.FC = () => {
                 const data = new Uint8Array(arrayBuffer);
                 
                 const parsedEml = await new Promise<any>((resolve, reject) => {
-                    emlformat.parse(data, (err: any, parsedData: any) => {
+                    window.emlformat.parse(data, (err: any, parsedData: any) => {
                         if (err) return reject(err);
                         resolve(parsedData);
                     });
@@ -122,7 +126,9 @@ const App: React.FC = () => {
                 }
             } else if (extension === 'msg') {
                 const arrayBuffer = await file.arrayBuffer();
-                const msgReader = new MsgReader(arrayBuffer);
+                // FIX: The UMD build of MsgReader may place the constructor on the `default` property.
+                const MsgReaderConstructor = (window.MsgReader as any).default || window.MsgReader;
+                const msgReader = new MsgReaderConstructor(arrayBuffer);
                 const fileData = msgReader.getFileData();
 
                 if (fileData.error) throw new Error(fileData.error);
