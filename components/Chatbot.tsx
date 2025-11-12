@@ -70,7 +70,16 @@ export const Chatbot: React.FC<ChatbotProps> = ({ data }) => {
         setMessages(prev => [...prev, modelMessage]);
     } catch (error) {
         console.error("Chatbot error:", error);
-        const errorMessage: ChatMessage = { sender: 'model', text: 'Sorry, I encountered an error. Please try again.' };
+        
+        let errorMessageText = 'Sorry, I encountered an error. Please try again.';
+        if (error instanceof Error) {
+            const message = error.toString();
+            if (message.includes('503') || message.includes('UNAVAILABLE') || message.includes('overloaded')) {
+                errorMessageText = 'The AI assistant is currently overloaded. Please wait a moment before sending your message again.';
+            }
+        }
+        
+        const errorMessage: ChatMessage = { sender: 'model', text: errorMessageText };
         setMessages(prev => [...prev, errorMessage]);
     } finally {
         setIsLoading(false);

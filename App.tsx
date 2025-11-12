@@ -194,7 +194,7 @@ const App: React.FC = () => {
             console.error("Failed to fetch news:", err);
             let rawMessage = '';
             if (err instanceof Error) {
-                rawMessage = err.message;
+                rawMessage = err.toString();
             } else if (typeof err === 'object' && err !== null) {
                 try {
                     const errorObj = err as any;
@@ -210,7 +210,9 @@ const App: React.FC = () => {
                 rawMessage = 'An unknown error occurred while fetching news.';
             }
 
-            if (rawMessage.includes('RESOURCE_EXHAUSTED') || rawMessage.includes('429')) {
+            if (rawMessage.includes('503') || rawMessage.includes('UNAVAILABLE') || rawMessage.includes('overloaded')) {
+                setNewsError('Could not fetch news as the AI model is temporarily overloaded. This may resolve on its own.');
+            } else if (rawMessage.includes('RESOURCE_EXHAUSTED') || rawMessage.includes('429')) {
                 setNewsError('Could not fetch news due to API rate limits. Please check your plan and billing details.');
             } else {
                 setNewsError('Failed to fetch news and web information.');
@@ -222,9 +224,25 @@ const App: React.FC = () => {
         setIsNewsLoading(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      setIsLoading(false);
-      setIsNewsLoading(false);
+        let errorMessage = 'An unknown error occurred during document processing.';
+        if (err instanceof Error) {
+            errorMessage = err.toString();
+        } else if (typeof err === 'object' && err !== null) {
+            errorMessage = JSON.stringify(err);
+        } else if (err) {
+            errorMessage = String(err);
+        }
+        
+        if (errorMessage.includes('503') || errorMessage.includes('UNAVAILABLE') || errorMessage.includes('overloaded')) {
+            setError("The AI model is currently overloaded. We tried several times automatically but were unsuccessful. Please wait a few moments and try submitting your documents again.");
+        } else if (errorMessage.includes("API_KEY")) {
+            setError("The Gemini API key is not configured correctly or is invalid. Please check your environment setup.");
+        } else {
+            setError(errorMessage);
+        }
+        
+        setIsLoading(false);
+        setIsNewsLoading(false);
     }
   };
 

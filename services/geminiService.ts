@@ -3,6 +3,41 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData, WebNewsData, GroundingMetadata } from '../types';
 
 /**
+ * A utility function to retry an async operation with exponential backoff.
+ * This is useful for handling transient errors like API overloads (e.g., 503 errors).
+ * @param fn The async function to execute.
+ * @param retries The maximum number of retries.
+ * @param delay The initial delay in milliseconds.
+ * @returns A promise that resolves with the result of the function.
+ */
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error.toString();
+      
+      // Only retry on specific transient errors (overloaded, unavailable)
+      if (errorMessage.includes('503') || errorMessage.includes('UNAVAILABLE') || errorMessage.includes('overloaded')) {
+        if (i < retries - 1) { // Don't wait after the last attempt
+          const backoffDelay = delay * Math.pow(2, i);
+          console.log(`Attempt ${i + 1} failed with transient error. Retrying in ${backoffDelay}ms...`);
+          await new Promise(res => setTimeout(res, backoffDelay));
+        }
+      } else {
+        // For non-retriable errors (e.g., bad request, auth error), fail immediately.
+        throw error;
+      }
+    }
+  }
+  console.error("All retry attempts failed.");
+  throw lastError; // Rethrow the last captured error
+};
+
+
+/**
  * Creates and returns a GoogleGenAI client instance.
  * Throws an error if the API key is not available in the environment variables,
  * ensuring that the app can handle the error gracefully instead of crashing.
@@ -143,96 +178,100 @@ const responseSchema = {
 };
 
 export const extractDataFromDocument = async (files: { base64Data: string; mimeType: string }[]): Promise<ExtractedData> => {
-  const ai = getAiClient();
-  
-  const fileParts = files.map(file => ({
-    inlineData: {
-      data: file.base64Data,
-      mimeType: file.mimeType,
-    },
-  }));
-
-  const textPart = {
-    text: `You are an expert AI assistant for an insurance underwriting workbench. 
-    Your task is to meticulously extract and consolidate all relevant information from the provided documents and structure it into a single, complete JSON object based on the provided schema.
-    The documents could be a mix of PDFs, Word documents, or emails related to the same insurance policy or client.
-    If information for the same field is present in multiple documents, prioritize the most recent or comprehensive data, and merge details where appropriate (e.g., list all risk types found across all documents).
-
-    IMPORTANT: You must differentiate between the insurer (the company providing the insurance, e.g., Generali) and the insured (the client seeking coverage). The 'anagrafica' (General Information) section MUST exclusively contain information about the insured client. Do NOT populate it with details about the insurer.
-
-    - The 'riskSummary' should be a concise overview of the documents, highlighting the main insured party, primary risks, and significant limits.
-    - All other sections ('anagrafica', 'propertyDetails', etc.) must be populated with the corresponding extracted and consolidated data.
+  return withRetry(async () => {
+    const ai = getAiClient();
     
-    The liability information is split into two sections: 'generalLiabilityDetails' and 'productLiabilityDetails'. Extract information into the appropriate section. If the document only covers one type of liability (e.g., only General Liability), populate that section and leave the fields in the other section as 'null'.
-    For the \`propertyDetails\`, \`generalLiabilityDetails\`, \`productLiabilityDetails\`, and \`dettaglioEdifici\` sections, use the respective "Notes" fields (e.g., \`propertyNotes\`, \`generalLiabilityNotes\`) to summarize any important information that does not fit into the other predefined structured fields.
-    If a specific piece of information is not found in the documents, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
-    For fields that are arrays (like 'dettaglioEdifici' or 'sublimits'), return an empty array [] if no items are found.
-    Return only the JSON object.`
-  };
-  
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [textPart, ...fileParts] },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: responseSchema,
-      temperature: 0.2,
-    },
-  });
-  
-  const responseText = response.text;
-  
-  try {
-      const parsed = JSON.parse(responseText);
-      
-      // FIX: Ensure all top-level objects and arrays exist to prevent runtime errors.
-      // This prevents crashes if the model fails to return a complete structure.
-      parsed.riskSummary = parsed.riskSummary || { riskSummary: null };
-      parsed.anagrafica = parsed.anagrafica || {};
-      parsed.propertyDetails = parsed.propertyDetails || {};
-      parsed.generalLiabilityDetails = parsed.generalLiabilityDetails || {};
-      parsed.productLiabilityDetails = parsed.productLiabilityDetails || {};
-      parsed.dettaglioEdifici = Array.isArray(parsed.dettaglioEdifici) ? parsed.dettaglioEdifici : [];
-      parsed.sublimits = Array.isArray(parsed.sublimits) ? parsed.sublimits : [];
+    const fileParts = files.map(file => ({
+      inlineData: {
+        data: file.base64Data,
+        mimeType: file.mimeType,
+      },
+    }));
 
-      return parsed as ExtractedData;
-    } catch (e) {
-      console.error("Failed to parse extracted JSON:", responseText);
-      throw new Error("The AI model returned an invalid data format.");
-    }
+    const textPart = {
+      text: `You are an expert AI assistant for an insurance underwriting workbench. 
+      Your task is to meticulously extract and consolidate all relevant information from the provided documents and structure it into a single, complete JSON object based on the provided schema.
+      The documents could be a mix of PDFs, Word documents, or emails related to the same insurance policy or client.
+      If information for the same field is present in multiple documents, prioritize the most recent or comprehensive data, and merge details where appropriate (e.g., list all risk types found across all documents).
+
+      IMPORTANT: You must differentiate between the insurer (the company providing the insurance, e.g., Generali) and the insured (the client seeking coverage). The 'anagrafica' (General Information) section MUST exclusively contain information about the insured client. Do NOT populate it with details about the insurer.
+
+      - The 'riskSummary' should be a concise overview of the documents, highlighting the main insured party, primary risks, and significant limits.
+      - All other sections ('anagrafica', 'propertyDetails', etc.) must be populated with the corresponding extracted and consolidated data.
+      
+      The liability information is split into two sections: 'generalLiabilityDetails' and 'productLiabilityDetails'. Extract information into the appropriate section. If the document only covers one type of liability (e.g., only General Liability), populate that section and leave the fields in the other section as 'null'.
+      For the \`propertyDetails\`, \`generalLiabilityDetails\`, \`productLiabilityDetails\`, and \`dettaglioEdifici\` sections, use the respective "Notes" fields (e.g., \`propertyNotes\`, \`generalLiabilityNotes\`) to summarize any important information that does not fit into the other predefined structured fields.
+      If a specific piece of information is not found in the documents, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
+      For fields that are arrays (like 'dettaglioEdifici' or 'sublimits'), return an empty array [] if no items are found.
+      Return only the JSON object.`
+    };
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [textPart, ...fileParts] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+        temperature: 0.2,
+      },
+    });
+    
+    const responseText = response.text;
+    
+    try {
+        const parsed = JSON.parse(responseText);
+        
+        // FIX: Ensure all top-level objects and arrays exist to prevent runtime errors.
+        // This prevents crashes if the model fails to return a complete structure.
+        parsed.riskSummary = parsed.riskSummary || { riskSummary: null };
+        parsed.anagrafica = parsed.anagrafica || {};
+        parsed.propertyDetails = parsed.propertyDetails || {};
+        parsed.generalLiabilityDetails = parsed.generalLiabilityDetails || {};
+        parsed.productLiabilityDetails = parsed.productLiabilityDetails || {};
+        parsed.dettaglioEdifici = Array.isArray(parsed.dettaglioEdifici) ? parsed.dettaglioEdifici : [];
+        parsed.sublimits = Array.isArray(parsed.sublimits) ? parsed.sublimits : [];
+
+        return parsed as ExtractedData;
+      } catch (e) {
+        console.error("Failed to parse extracted JSON:", responseText);
+        throw new Error("The AI model returned an invalid data format.");
+      }
+  });
 };
 
 export const fetchWebNews = async (entityName: string): Promise<WebNewsData | null> => {
   if (!entityName) return null;
 
-  try {
-    const ai = getAiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Summarize the latest news and relevant web information about "${entityName}".`,
-      config: {
-        tools: [{googleSearch: {}}],
-      },
-    });
+  return withRetry(async () => {
+    try {
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Summarize the latest news and relevant web information about "${entityName}".`,
+        config: {
+          tools: [{googleSearch: {}}],
+        },
+      });
 
-    const summary = response.text ?? null;
-    const sources: GroundingMetadata | null = response.candidates?.[0]?.groundingMetadata ?? null;
+      const summary = response.text ?? null;
+      const sources: GroundingMetadata | null = response.candidates?.[0]?.groundingMetadata ?? null;
 
-    // FIX: Defensively handle cases where `sources` exists but `groundingChunks` is not an array.
-    if (sources && !Array.isArray(sources.groundingChunks)) {
-      sources.groundingChunks = [];
+      // FIX: Defensively handle cases where `sources` exists but `groundingChunks` is not an array.
+      if (sources && !Array.isArray(sources.groundingChunks)) {
+        sources.groundingChunks = [];
+      }
+      
+      const hasNoSources = !sources || sources.groundingChunks.length === 0;
+
+      // If there's no summary and no sources, return null.
+      if (!summary && hasNoSources) {
+          return null;
+      }
+
+      return { summary, sources };
+    } catch (error) {
+      console.error(`Failed to fetch news for ${entityName}:`, error);
+      throw error;
     }
-    
-    const hasNoSources = !sources || sources.groundingChunks.length === 0;
-
-    // If there's no summary and no sources, return null.
-    if (!summary && hasNoSources) {
-        return null;
-    }
-
-    return { summary, sources };
-  } catch (error) {
-    console.error(`Failed to fetch news for ${entityName}:`, error);
-    throw error;
-  }
+  });
 };
