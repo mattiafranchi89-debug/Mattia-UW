@@ -82,7 +82,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ data }) => {
       {/* Floating Action Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 bg-red-600 text-white rounded-full p-4 shadow-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-110 z-50"
+        className="fixed bottom-6 right-6 bg-red-500 text-white rounded-full p-4 shadow-lg hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-110 z-50"
         aria-label="Open chatbot"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,7 +92,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ data }) => {
 
       {/* Chat Window */}
       <div
-        className={`fixed bottom-24 right-6 w-full max-w-md bg-white rounded-lg shadow-2xl border border-gray-200 transition-all duration-300 ease-in-out z-50 ${
+        className={`fixed bottom-24 right-6 w-full max-w-md bg-white rounded-lg shadow-xl border border-gray-200 transition-all duration-300 ease-in-out z-50 ${
           isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
         style={{ height: '70vh' }}
@@ -115,7 +115,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ data }) => {
                 <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-xs md:max-w-sm lg:max-w-md px-4 py-2 rounded-2xl whitespace-pre-wrap ${
-                      msg.sender === 'user' ? 'bg-red-600 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'
+                      msg.sender === 'user' ? 'bg-red-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'
                     }`}
                   >
                     {msg.text}
@@ -151,7 +151,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ data }) => {
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="absolute right-1 top-1/2 -translate-y-1/2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="absolute right-1 top-1/2 -translate-y-1/2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 aria-label="Send message"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">

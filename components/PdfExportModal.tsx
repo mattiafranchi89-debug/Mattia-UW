@@ -27,7 +27,7 @@ const Checkbox: React.FC<{label: string, checked: boolean, onChange: (e: React.C
             type="checkbox"
             checked={checked}
             onChange={onChange}
-            className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+            className="h-4 w-4 rounded border-gray-300 text-red-500 focus:ring-red-500"
         />
         <span className="text-sm text-gray-700">{label}</span>
     </label>
@@ -120,7 +120,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({ isOpen, onClose,
             </button>
             <button
               onClick={handleGenerateClick}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md w-auto hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md w-auto hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
             >
               Generate PDF
             </button>

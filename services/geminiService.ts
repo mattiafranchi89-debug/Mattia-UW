@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedData, WebNewsData, GroundingMetadata } from '../types';
 
@@ -141,36 +142,37 @@ const responseSchema = {
   },
 };
 
-export const extractDataFromDocument = async (base64Data: string, mimeType: string): Promise<ExtractedData> => {
+export const extractDataFromDocument = async (files: { base64Data: string; mimeType: string }[]): Promise<ExtractedData> => {
   const ai = getAiClient();
   
-  const filePart = {
+  const fileParts = files.map(file => ({
     inlineData: {
-      data: base64Data,
-      mimeType: mimeType,
+      data: file.base64Data,
+      mimeType: file.mimeType,
     },
-  };
+  }));
 
   const textPart = {
     text: `You are an expert AI assistant for an insurance underwriting workbench. 
-    Your task is to meticulously extract all relevant information from the provided document and structure it into a single, complete JSON object based on the provided schema.
-    The document could be a PDF, a Word document, or an email related to an insurance policy.
-    
+    Your task is to meticulously extract and consolidate all relevant information from the provided documents and structure it into a single, complete JSON object based on the provided schema.
+    The documents could be a mix of PDFs, Word documents, or emails related to the same insurance policy or client.
+    If information for the same field is present in multiple documents, prioritize the most recent or comprehensive data, and merge details where appropriate (e.g., list all risk types found across all documents).
+
     IMPORTANT: You must differentiate between the insurer (the company providing the insurance, e.g., Generali) and the insured (the client seeking coverage). The 'anagrafica' (General Information) section MUST exclusively contain information about the insured client. Do NOT populate it with details about the insurer.
 
-    - The 'riskSummary' should be a concise overview of the document, highlighting the main insured party, primary risks, and significant limits.
-    - All other sections ('anagrafica', 'propertyDetails', etc.) must be populated with the corresponding extracted data.
+    - The 'riskSummary' should be a concise overview of the documents, highlighting the main insured party, primary risks, and significant limits.
+    - All other sections ('anagrafica', 'propertyDetails', etc.) must be populated with the corresponding extracted and consolidated data.
     
     The liability information is split into two sections: 'generalLiabilityDetails' and 'productLiabilityDetails'. Extract information into the appropriate section. If the document only covers one type of liability (e.g., only General Liability), populate that section and leave the fields in the other section as 'null'.
     For the \`propertyDetails\`, \`generalLiabilityDetails\`, \`productLiabilityDetails\`, and \`dettaglioEdifici\` sections, use the respective "Notes" fields (e.g., \`propertyNotes\`, \`generalLiabilityNotes\`) to summarize any important information that does not fit into the other predefined structured fields.
-    If a specific piece of information is not found in the document, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
+    If a specific piece of information is not found in the documents, you MUST use 'null' as the value for that field. Do not invent information or use placeholders like 0, "N/A", or "Not Found". It is crucial to leave the field as 'null'.
     For fields that are arrays (like 'dettaglioEdifici' or 'sublimits'), return an empty array [] if no items are found.
     Return only the JSON object.`
   };
   
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: { parts: [filePart, textPart] },
+    contents: { parts: [...fileParts, textPart] },
     config: {
       responseMimeType: "application/json",
       responseSchema: responseSchema,

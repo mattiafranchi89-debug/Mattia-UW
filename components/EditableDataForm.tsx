@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ExtractedData, Anagrafica, PropertyDetails, GeneralLiabilityDetails, ProductLiabilityDetails, WebNewsData, Sublimit, DettaglioEdifici } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { EmailModal } from './EmailModal';
 import { PdfExportModal, PdfExportConfig } from './PdfExportModal';
+import { SideNav } from './SideNav';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -25,19 +26,24 @@ const ExclamationTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props)
     </svg>
 );
 
-const Section: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+interface SectionProps {
+    title: string;
+    children: React.ReactNode;
+    isOpen: boolean;
+    onToggle: () => void;
+}
 
+const Section: React.FC<SectionProps> = ({ title, children, isOpen, onToggle }) => {
     return (
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 mb-6 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
             <button
                 type="button"
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex justify-between items-center p-6 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-opacity-75"
+                onClick={onToggle}
+                className="w-full flex justify-between items-center p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-opacity-75"
                 aria-expanded={isOpen}
                 aria-controls={`section-content-${title.replace(/\s+/g, '-')}`}
             >
-                <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+                <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className={`h-5 w-5 text-gray-500 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
@@ -52,7 +58,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode; defaultOpen?
                 id={`section-content-${title.replace(/\s+/g, '-')}`}
                 className={`overflow-hidden transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[5000px]' : 'max-h-0'}`}
             >
-                <div className="px-6 pb-6 pt-0">
+                <div className="px-4 pb-4 pt-0">
                    {/* This separator is only visible when the content area is open */}
                    <div className="border-t border-gray-200 mb-6"></div>
                    {children}
@@ -224,6 +230,79 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
     const [emailSubject, setEmailSubject] = useState('');
     const [emailBody, setEmailBody] = useState('');
     const [expandedBuildingIndex, setExpandedBuildingIndex] = useState<number | null>(null);
+
+    const [activeSection, setActiveSection] = useState('risk-summary');
+    const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+    const sections = useMemo(() => {
+        const baseSections = [
+            { id: 'risk-summary', title: 'Risk Summary' },
+            { id: 'latest-news', title: 'Latest News' },
+            { id: 'general-information', title: 'General Information' },
+            { id: 'property-details', title: 'Property Details' },
+            { id: 'general-liability-details', title: 'General Liability' },
+            { id: 'product-liability-details', title: 'Product Liability' },
+        ];
+        if (data.sublimits?.length > 0) {
+            baseSections.push({ id: 'sublimits', title: 'Sublimits' });
+        }
+        if (data.dettaglioEdifici?.length > 0) {
+            baseSections.push({ id: 'building-details', title: 'Building Details' });
+        }
+        return baseSections;
+    }, [data.sublimits, data.dettaglioEdifici]);
+    
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>(
+        Object.fromEntries(sections.map(s => [s.id, true]))
+    );
+    
+    const toggleSection = (sectionId: string) => {
+        setOpenSections(prev => ({...prev, [sectionId]: !prev[sectionId]}));
+    };
+
+    const handleNavAndOpenSection = (sectionId: string) => {
+        setActiveSection(sectionId); // Set active state immediately on click
+
+        // Ensure the section is open (useful if the user manually closed it)
+        setOpenSections(prev => ({...prev, [sectionId]: true}));
+
+        // Scroll to the section
+        const element = document.getElementById(sectionId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
+
+    useEffect(() => {
+        const observerOptions = {
+            root: null, 
+            rootMargin: "-25% 0px -75% 0px", // A horizontal line at 25% from the top of the viewport
+            threshold: 0,
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    setActiveSection(entry.target.id);
+                }
+            });
+        }, observerOptions);
+
+        const currentRefs = sectionRefs.current;
+        Object.values(currentRefs).forEach(ref => {
+            // FIX: Use `instanceof Element` as a type guard. In some TypeScript configurations, `Object.values` may not be strongly typed, causing `ref` to be `unknown`. This check ensures `ref` is a valid Element.
+            if (ref instanceof Element) observer.observe(ref);
+        });
+
+        return () => {
+             Object.values(currentRefs).forEach(ref => {
+                // FIX: Use `instanceof Element` as a type guard in the cleanup function as well.
+                if (ref instanceof Element) observer.unobserve(ref);
+            });
+        };
+    }, [sections]); // Rerun observer setup if sections dynamically change
+
 
     /**
      * Handles updates to any field in the form data.
@@ -442,7 +521,7 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         };
     
         const COLORS = {
-            PRIMARY: '#D2192F', TEXT_DARK: '#2D3748', TEXT_LIGHT: '#4A5568', LINK: '#2B6CB0',
+            PRIMARY: '#EF4444', TEXT_DARK: '#2D3748', TEXT_LIGHT: '#4A5568', LINK: '#2B6CB0',
         };
     
         const PAGE_MARGIN = 40;
@@ -685,14 +764,18 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
         doc.save(filename);
     };
 
+    const setSectionRef = (id: string) => (el: HTMLDivElement | null) => {
+        sectionRefs.current[id] = el;
+    };
+
     return (
         <>
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-900">Extracted Data</h1>
+            <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Extracted Data</h1>
                 <div className="flex items-center space-x-2">
                     <button 
                         onClick={generateEmailForMissingData}
-                        className="flex items-center bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-colors"
+                        className="flex items-center bg-blue-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-blue-600 transition-colors text-sm"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -701,7 +784,7 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                     </button>
                     <button
                         onClick={handleExportCsv}
-                        className="flex items-center bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 transition-colors"
+                        className="flex items-center bg-green-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-green-600 transition-colors text-sm"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -710,238 +793,258 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                     </button>
                      <button
                         onClick={() => setIsPdfModalOpen(true)}
-                        className="flex items-center bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-red-700 transition-colors"
+                        className="flex items-center bg-red-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-red-600 transition-colors text-sm"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                           <path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0017.414 6L14 2.586A2 2 0 0012.586 2H4z" />
-                           <path d="M9.5 13a.5.5 0 01-1 0V9.5a.5.5 0 011 0V13z" />
-                           <path d="M10 7.5a1 1 0 100-2 1 1 0 000 2z" />
-                           <path d="M11.5 13a.5.5 0 01-1 0V9.5a.5.5 0 011 0V13z" />
+                           <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0017.414 6L14 2.586A2 2 0 0012.586 2H4zm2 5a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                         </svg>
                         Export PDF
                     </button>
                 </div>
             </div>
 
-            <Section title="Risk Summary" defaultOpen={true}>
-                <p className="text-gray-700 text-sm whitespace-pre-wrap">{data.riskSummary.riskSummary}</p>
-            </Section>
-
-            <Section title="Latest News" defaultOpen={true}>
-                {isNewsLoading ? (
-                    <div className="flex items-center text-gray-500 text-sm">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>Searching for latest news about {data.anagrafica.entityName}...</span>
+            <div className="grid grid-cols-1 lg:grid-cols-4 lg:gap-x-12">
+                <aside className="hidden lg:block lg:col-span-1">
+                     <SideNav sections={sections} activeSection={activeSection} onNavigate={handleNavAndOpenSection} />
+                </aside>
+                <main className="lg:col-span-3">
+                    <div id="risk-summary" ref={setSectionRef('risk-summary')}>
+                        <Section title="Risk Summary" isOpen={openSections['risk-summary']} onToggle={() => toggleSection('risk-summary')}>
+                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{data.riskSummary.riskSummary}</p>
+                        </Section>
                     </div>
-                ) : newsError ? (
-                    <div className="flex items-start text-red-700 bg-red-50 p-4 rounded-lg border border-red-200" role="alert">
-                        <ExclamationTriangleIcon className="h-5 w-5 mr-3 flex-shrink-0" />
-                        <div className="text-sm">
-                            <p className="font-bold">Failed to load news</p>
-                            <p>{newsError}</p>
-                        </div>
-                    </div>
-                ) : newsData && (newsData.summary || (newsData.sources && newsData.sources.groundingChunks.length > 0)) ? (
-                    <div className="space-y-4">
-                        {newsData.summary && (
-                            <div>
-                                <h3 className="text-md font-semibold text-gray-700 mb-2">Web Summary</h3>
-                                <p className="text-gray-700 text-sm whitespace-pre-wrap">{newsData.summary}</p>
-                            </div>
-                        )}
-                        {newsData.sources && newsData.sources.groundingChunks.length > 0 && (
-                             <div>
-                                <h3 className="text-md font-semibold text-gray-700 mb-2 mt-4">Recent Mentions</h3>
-                                <ul className="space-y-3">
-                                    {/* FIX: Handle potentially missing uri or title in grounding chunks. */}
-                                    {newsData.sources.groundingChunks.filter(chunk => chunk.web?.uri).map((chunk, index) => (
-                                      <li key={index} className="flex items-start">
-                                        <svg className="h-5 w-5 text-red-500 mr-3 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                                        </svg>
-                                        <div className="truncate">
-                                          <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-600 hover:text-red-800 hover:underline truncate" title={chunk.web.uri}>
-                                            {chunk.web.title || chunk.web.uri}
-                                          </a>
+                    
+                    <div id="latest-news" ref={setSectionRef('latest-news')}>
+                        <Section title="Latest News" isOpen={openSections['latest-news']} onToggle={() => toggleSection('latest-news')}>
+                            {isNewsLoading ? (
+                                <div className="flex items-center text-gray-500 text-sm">
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <span>Searching for latest news about {data.anagrafica.entityName}...</span>
+                                </div>
+                            ) : newsError ? (
+                                <div className="flex items-start text-red-700 bg-red-50 p-4 rounded-lg border border-red-200" role="alert">
+                                    <ExclamationTriangleIcon className="h-5 w-5 mr-3 flex-shrink-0" />
+                                    <div className="text-sm">
+                                        <p className="font-bold">Failed to load news</p>
+                                        <p>{newsError}</p>
+                                    </div>
+                                </div>
+                            ) : newsData && (newsData.summary || (newsData.sources && newsData.sources.groundingChunks.length > 0)) ? (
+                                <div className="space-y-4">
+                                    {newsData.summary && (
+                                        <div>
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2">Web Summary</h3>
+                                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{newsData.summary}</p>
                                         </div>
-                                      </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
+                                    )}
+                                    {newsData.sources && newsData.sources.groundingChunks.length > 0 && (
+                                         <div>
+                                            <h3 className="text-md font-semibold text-gray-700 mb-2 mt-4">Recent Mentions</h3>
+                                            <ul className="space-y-3">
+                                                {/* FIX: Handle potentially missing uri or title in grounding chunks. */}
+                                                {newsData.sources.groundingChunks.filter(chunk => chunk.web?.uri).map((chunk, index) => (
+                                                  <li key={index} className="flex items-start">
+                                                    <svg className="h-5 w-5 text-red-500 mr-3 mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                                    </svg>
+                                                    <div className="truncate">
+                                                      <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-red-500 hover:text-red-600 hover:underline truncate" title={chunk.web.uri}>
+                                                        {chunk.web.title || chunk.web.uri}
+                                                      </a>
+                                                    </div>
+                                                  </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500">No summary or recent news could be generated for "{data.anagrafica.entityName}".</p>
+                            )}
+                        </Section>
                     </div>
-                ) : (
-                    <p className="text-sm text-gray-500">No summary or recent news could be generated for "{data.anagrafica.entityName}".</p>
-                )}
-            </Section>
 
-            <Section title="General Information (Anagrafica)" defaultOpen={false}>
-                <Grid>
-                    {renderFields('anagrafica', anagraficaFields, data.anagrafica)}
-                    <DataInput 
-                        label="Data Status" 
-                        value={data.anagrafica.dataStatus} 
-                        onChange={(v) => handleChange<Anagrafica>('anagrafica', 'dataStatus', v)} 
-                        suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.anagrafica.dataStatus}
-                        isMissing={isValueMissing(data.anagrafica.dataStatus)}
-                    />
-                </Grid>
-            </Section>
-
-            <Section title="Property Details" defaultOpen={false}>
-                <Grid>
-                    {renderFields('propertyDetails', propertyDetailsFields, data.propertyDetails)}
-                    <TextareaInput
-                        label="Property Notes"
-                        value={data.propertyDetails.propertyNotes}
-                        onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'propertyNotes', v)}
-                        fullWidth={true}
-                        isMissing={isValueMissing(data.propertyDetails.propertyNotes)}
-                    />
-                    <DataInput 
-                        label="Data Status" 
-                        value={data.propertyDetails.dataStatus} 
-                        onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'dataStatus', v)} 
-                        suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.propertyDetails.dataStatus} 
-                        isMissing={isValueMissing(data.propertyDetails.dataStatus)}
-                    />
-                </Grid>
-            </Section>
-
-             <Section title="General Liability Details" defaultOpen={false}>
-                <Grid>
-                    {renderFields('generalLiabilityDetails', generalLiabilityFields, data.generalLiabilityDetails)}
-                    <TextareaInput
-                        label="General Liability Notes"
-                        value={data.generalLiabilityDetails.generalLiabilityNotes}
-                        onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'generalLiabilityNotes', v)}
-                        fullWidth={true}
-                        isMissing={isValueMissing(data.generalLiabilityDetails.generalLiabilityNotes)}
-                    />
-                    <DataInput 
-                        label="Data Status" 
-                        value={data.generalLiabilityDetails.dataStatus} 
-                        onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'dataStatus', v)} 
-                        suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.generalLiabilityDetails.dataStatus} 
-                        isMissing={isValueMissing(data.generalLiabilityDetails.dataStatus)}
-                    />
-                </Grid>
-            </Section>
-
-            <Section title="Product Liability Details" defaultOpen={false}>
-                <Grid>
-                    {renderFields('productLiabilityDetails', productLiabilityFields, data.productLiabilityDetails)}
-                    <TextareaInput
-                        label="Product Liability Notes"
-                        value={data.productLiabilityDetails.productLiabilityNotes}
-                        onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'productLiabilityNotes', v)}
-                        fullWidth={true}
-                        isMissing={isValueMissing(data.productLiabilityDetails.productLiabilityNotes)}
-                    />
-                    <DataInput 
-                        label="Data Status" 
-                        value={data.productLiabilityDetails.dataStatus} 
-                        onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'dataStatus', v)} 
-                        suggestions={['ok', 'partial', 'ambiguous']} 
-                        status={data.productLiabilityDetails.dataStatus} 
-                        isMissing={isValueMissing(data.productLiabilityDetails.dataStatus)}
-                    />
-                </Grid>
-            </Section>
-
-            {data.sublimits && data.sublimits.length > 0 && (
-                <Section title="Sublimits" defaultOpen={false}>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Type</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coverage</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sublimit Type</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount (EUR/%)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {data.sublimits.map((sublimit, index) => (
-                                    <tr key={index}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.riskType}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.coverage}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.sublimitType}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.amountEurPercent}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div id="general-information" ref={setSectionRef('general-information')}>
+                        <Section title="General Information (Anagrafica)" isOpen={openSections['general-information']} onToggle={() => toggleSection('general-information')}>
+                            <Grid>
+                                {renderFields('anagrafica', anagraficaFields, data.anagrafica)}
+                                <DataInput 
+                                    label="Data Status" 
+                                    value={data.anagrafica.dataStatus} 
+                                    onChange={(v) => handleChange<Anagrafica>('anagrafica', 'dataStatus', v)} 
+                                    suggestions={['ok', 'partial', 'ambiguous']} 
+                                    status={data.anagrafica.dataStatus}
+                                    isMissing={isValueMissing(data.anagrafica.dataStatus)}
+                                />
+                            </Grid>
+                        </Section>
                     </div>
-                </Section>
-            )}
+                    
+                    <div id="property-details" ref={setSectionRef('property-details')}>
+                        <Section title="Property Details" isOpen={openSections['property-details']} onToggle={() => toggleSection('property-details')}>
+                            <Grid>
+                                {renderFields('propertyDetails', propertyDetailsFields, data.propertyDetails)}
+                                <TextareaInput
+                                    label="Property Notes"
+                                    value={data.propertyDetails.propertyNotes}
+                                    onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'propertyNotes', v)}
+                                    fullWidth={true}
+                                    isMissing={isValueMissing(data.propertyDetails.propertyNotes)}
+                                />
+                                <DataInput 
+                                    label="Data Status" 
+                                    value={data.propertyDetails.dataStatus} 
+                                    onChange={(v) => handleChange<PropertyDetails>('propertyDetails', 'dataStatus', v)} 
+                                    suggestions={['ok', 'partial', 'ambiguous']} 
+                                    status={data.propertyDetails.dataStatus} 
+                                    isMissing={isValueMissing(data.propertyDetails.dataStatus)}
+                                />
+                            </Grid>
+                        </Section>
+                    </div>
 
-            {data.dettaglioEdifici && data.dettaglioEdifici.length > 0 && (
-                 <Section title="Building Details (Dettaglio Edifici)" defaultOpen={false}>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                             <thead className="bg-gray-50">
-                                <tr>
-                                    <th scope="col" className="w-12 px-4 py-3"></th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Building</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Occupancy</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year Built</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total RCV (EUR)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {data.dettaglioEdifici.map((building, index) => (
-                                    <React.Fragment key={index}>
-                                        <tr onClick={() => setExpandedBuildingIndex(expandedBuildingIndex === index ? null : index)} className="cursor-pointer hover:bg-gray-50">
-                                            <td className="px-4 py-4 text-center">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-gray-500 transform transition-transform duration-200 ${expandedBuildingIndex === index ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                </svg>
-                                            </td>
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{building.buildingName || building.buildingId}</td>
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.address}</td>
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.occupancy}</td>
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.yearBuilt}</td>
-                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 text-right">{building.totalRcvEur?.toLocaleString('de-DE')}</td>
-                                        </tr>
-                                        {expandedBuildingIndex === index && (
+                    <div id="general-liability-details" ref={setSectionRef('general-liability-details')}>
+                         <Section title="General Liability Details" isOpen={openSections['general-liability-details']} onToggle={() => toggleSection('general-liability-details')}>
+                            <Grid>
+                                {renderFields('generalLiabilityDetails', generalLiabilityFields, data.generalLiabilityDetails)}
+                                <TextareaInput
+                                    label="General Liability Notes"
+                                    value={data.generalLiabilityDetails.generalLiabilityNotes}
+                                    onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'generalLiabilityNotes', v)}
+                                    fullWidth={true}
+                                    isMissing={isValueMissing(data.generalLiabilityDetails.generalLiabilityNotes)}
+                                />
+                                <DataInput 
+                                    label="Data Status" 
+                                    value={data.generalLiabilityDetails.dataStatus} 
+                                    onChange={(v) => handleChange<GeneralLiabilityDetails>('generalLiabilityDetails', 'dataStatus', v)} 
+                                    suggestions={['ok', 'partial', 'ambiguous']} 
+                                    status={data.generalLiabilityDetails.dataStatus} 
+                                    isMissing={isValueMissing(data.generalLiabilityDetails.dataStatus)}
+                                />
+                            </Grid>
+                        </Section>
+                    </div>
+                    
+                    <div id="product-liability-details" ref={setSectionRef('product-liability-details')}>
+                        <Section title="Product Liability Details" isOpen={openSections['product-liability-details']} onToggle={() => toggleSection('product-liability-details')}>
+                            <Grid>
+                                {renderFields('productLiabilityDetails', productLiabilityFields, data.productLiabilityDetails)}
+                                <TextareaInput
+                                    label="Product Liability Notes"
+                                    value={data.productLiabilityDetails.productLiabilityNotes}
+                                    onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'productLiabilityNotes', v)}
+                                    fullWidth={true}
+                                    isMissing={isValueMissing(data.productLiabilityDetails.productLiabilityNotes)}
+                                />
+                                <DataInput 
+                                    label="Data Status" 
+                                    value={data.productLiabilityDetails.dataStatus} 
+                                    onChange={(v) => handleChange<ProductLiabilityDetails>('productLiabilityDetails', 'dataStatus', v)} 
+                                    suggestions={['ok', 'partial', 'ambiguous']} 
+                                    status={data.productLiabilityDetails.dataStatus} 
+                                    isMissing={isValueMissing(data.productLiabilityDetails.dataStatus)}
+                                />
+                            </Grid>
+                        </Section>
+                    </div>
+                    
+                    {data.sublimits && data.sublimits.length > 0 && (
+                        <div id="sublimits" ref={setSectionRef('sublimits')}>
+                            <Section title="Sublimits" isOpen={openSections['sublimits']} onToggle={() => toggleSection('sublimits')}>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
                                             <tr>
-                                                <td colSpan={6} className="p-4 bg-gray-50 border-b border-gray-200">
-                                                    <h4 className="text-md font-semibold text-gray-800 mb-4">Edit Building: {building.buildingName || building.buildingId}</h4>
-                                                    <Grid>
-                                                        {dettaglioEdificiFields.map(field => (
-                                                            <DataInput
-                                                                key={field.key as string}
-                                                                label={field.label}
-                                                                value={building[field.key]}
-                                                                onChange={(v) => handleArrayChange('dettaglioEdifici', index, field.key, v)}
-                                                                type={field.type}
-                                                            />
-                                                        ))}
-                                                        <TextareaInput
-                                                            label="Building Notes"
-                                                            value={building.buildingNotes}
-                                                            onChange={(v) => handleArrayChange('dettaglioEdifici', index, 'buildingNotes', v)}
-                                                            fullWidth={true}
-                                                        />
-                                                    </Grid>
-                                                </td>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Risk Type</th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Coverage</th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sublimit Type</th>
+                                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount (EUR/%)</th>
                                             </tr>
-                                        )}
-                                    </React.Fragment>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Section>
-            )}
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {data.sublimits.map((sublimit, index) => (
+                                                <tr key={index}>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.riskType}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.coverage}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.sublimitType}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sublimit.amountEurPercent}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Section>
+                        </div>
+                    )}
+
+                    {data.dettaglioEdifici && data.dettaglioEdifici.length > 0 && (
+                        <div id="building-details" ref={setSectionRef('building-details')}>
+                             <Section title="Building Details (Dettaglio Edifici)" isOpen={openSections['building-details']} onToggle={() => toggleSection('building-details')}>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                         <thead className="bg-gray-50">
+                                            <tr>
+                                                <th scope="col" className="w-12 px-4 py-3"></th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Building</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Address</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Occupancy</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Year Built</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Total RCV (EUR)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {data.dettaglioEdifici.map((building, index) => (
+                                                <React.Fragment key={index}>
+                                                    <tr onClick={() => setExpandedBuildingIndex(expandedBuildingIndex === index ? null : index)} className="cursor-pointer hover:bg-gray-50">
+                                                        <td className="px-4 py-4 text-center">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-gray-500 transform transition-transform duration-200 ${expandedBuildingIndex === index ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                        </td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{building.buildingName || building.buildingId}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.address}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.occupancy}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{building.yearBuilt}</td>
+                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 text-right">{building.totalRcvEur?.toLocaleString('de-DE')}</td>
+                                                    </tr>
+                                                    {expandedBuildingIndex === index && (
+                                                        <tr>
+                                                            <td colSpan={6} className="p-4 bg-gray-50 border-b border-gray-200">
+                                                                <h4 className="text-md font-semibold text-gray-800 mb-4">Edit Building: {building.buildingName || building.buildingId}</h4>
+                                                                <Grid>
+                                                                    {dettaglioEdificiFields.map(field => (
+                                                                        <DataInput
+                                                                            key={field.key as string}
+                                                                            label={field.label}
+                                                                            value={building[field.key]}
+                                                                            onChange={(v) => handleArrayChange('dettaglioEdifici', index, field.key, v)}
+                                                                            type={field.type}
+                                                                        />
+                                                                    ))}
+                                                                    <TextareaInput
+                                                                        label="Building Notes"
+                                                                        value={building.buildingNotes}
+                                                                        onChange={(v) => handleArrayChange('dettaglioEdifici', index, 'buildingNotes', v)}
+                                                                        fullWidth={true}
+                                                                    />
+                                                                </Grid>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Section>
+                        </div>
+                    )}
+                </main>
+            </div>
 
             <PdfExportModal
                 isOpen={isPdfModalOpen}

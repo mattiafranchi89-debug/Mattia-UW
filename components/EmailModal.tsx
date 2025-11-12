@@ -53,7 +53,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({ isOpen, onClose, subject
           <div className="flex justify-between items-center mt-6 pt-4 border-t">
             <button
               onClick={handleCopy}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md w-auto hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-400"
+              className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md w-auto hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-400"
             >
               {copied ? 'Copied!' : 'Copy to Clipboard'}
             </button>
