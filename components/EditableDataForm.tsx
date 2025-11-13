@@ -4,6 +4,7 @@ import { AutocompleteInput } from './AutocompleteInput';
 import { EmailModal } from './EmailModal';
 import { PdfExportModal, PdfExportConfig } from './PdfExportModal';
 import { SideNav } from './SideNav';
+import { SummaryDashboard } from './SummaryDashboard';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -802,6 +803,8 @@ export const EditableDataForm: React.FC<EditableDataFormProps> = ({ data, onUpda
                     </button>
                 </div>
             </div>
+
+            <SummaryDashboard data={data} />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 lg:gap-x-12">
                 <aside className="hidden lg:block lg:col-span-1">
