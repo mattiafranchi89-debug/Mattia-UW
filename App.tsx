@@ -160,8 +160,18 @@ const App: React.FC = () => {
             }
         } catch (err) {
             console.error(`Failed to process email file "${file.name}":`, err);
-            // If parsing fails, add the original file to allow the model to attempt extraction.
-            processedFiles.push(file);
+            // FIX: If parsing fails (e.g., CDN script for eml-format fails to load),
+            // implement a fallback. For .eml files (which are text-based), read the raw
+            // content as text/plain. This prevents sending an unsupported MIME type
+            // like 'message/rfc822' to the model and allows it to process the text body.
+            if (extension === 'eml') {
+                const fileAsText = await file.text();
+                processedFiles.push(new File([fileAsText], file.name, { type: 'text/plain' }));
+            } else {
+                // For other binary formats like .msg, the best fallback is to push the original file.
+                // The API will reject it with a clear error, which is better than sending garbage data.
+                processedFiles.push(file);
+            }
         }
     }
 
@@ -184,13 +194,19 @@ const App: React.FC = () => {
       const filesToAnalyze = await processAndFlattenFiles(selectedFiles);
 
       const fileProcessingPromises = filesToAnalyze.map(async (file) => {
+        // For files that were converted from emails, the MIME type is already set.
+        // For others, we need to determine it.
         const base64Data = await fileToBase64(file);
         const mimeType = getMimeType(file);
 
-        if (!mimeType) {
+        // If the email fallback was used, the MIME type will be text/plain.
+        // We should honor that instead of re-calculating it.
+        const finalMimeType = file.type !== 'application/octet-stream' ? file.type : mimeType;
+
+        if (!finalMimeType) {
             throw new Error(`Unsupported file type. Could not determine MIME type for "${file.name}".`);
         }
-        return { base64Data, mimeType };
+        return { base64Data, mimeType: finalMimeType };
       });
       
       const filesToProcess = await Promise.all(fileProcessingPromises);
